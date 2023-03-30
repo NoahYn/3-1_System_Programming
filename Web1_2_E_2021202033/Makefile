@@ -9,9 +9,9 @@
 ## Description : this file is Makefile for the Assignment #1-1 		 ##
 #######################################################################
 
-EXEC = simple_ls
+EXEC = spls_advanced
 CC = gcc
-SRCS = 2021202033_simple_ls.c 
+SRCS = 2021202033_spls_advanced.c 
 FLGS = -g -Wall -Werror -Wextra # to detect warning and debug
 
 all : $(EXEC)
