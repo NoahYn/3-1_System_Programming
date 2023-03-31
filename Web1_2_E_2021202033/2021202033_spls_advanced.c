@@ -57,11 +57,11 @@ int main(int argc, char *argv[]) {
 	}
 
 // optind는 옵션아닌 첫번째 index
-
+//	printf("%d, %d\n", argc, optind);
 	if (argc == optind) // default. open current directory ('.')
 		dirp = opendir(".");
 	else if (argc == optind+1) // one input. open certain directory 
-		dirp = opendir(argv[1]);
+		dirp = opendir(argv[optind]);
 	if (dirp == NULL) { // exception : input path are not dir or not exist
 		fprintf(stderr, "cannot access '%s' : No such directory\n", argv[1]);
 		exit(1);
@@ -171,14 +171,32 @@ void sort_list(t_list **head) {
 }
 
 void print_list(t_list **head) {
-//	size_t total = 0;
+	size_t total = 0;
 	t_list *temp = (*head)->next; // point to first node of sorted list to print
 	struct stat st;
 	int mode;
 	struct tm *time;
-	lflag = 1;
+	char *month[12] = {"Jan", "Fab", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+	size_t max_name = 0;
+	size_t max_group = 0;
+	char* name;
+	char* group;
 
-//	printf("total : %d\n"); // 1kB stat구조체에 있는 것은 단위가 1k아님. 
+	lflag = 1;
+	while (temp) {
+		if (lflag > 0) {
+			if (lstat(temp->path, &st) == 0) {
+				total += st.st_blocks/2;
+				name = getpwuid(st.st_uid)->pw_name;
+				group = getgrgid(st.st_gid)->gr_name;
+				max_name = (strlen(name) > max_name ? strlen(name) : max_name);
+				max_group = (strlen(group) > max_group ? strlen(group) : max_group);				
+			} 
+		}
+		temp = temp->next;
+	}
+	printf("total %ld\n", total); 
+	temp = (*head)->next;
 	while (temp) { // print all the node
 		if (lflag > 0) {
 			if (lstat(temp->path, &st) == 0) {
@@ -208,19 +226,26 @@ void print_list(t_list **head) {
 						printf("-");
 				}
 				printf(" %ld", st.st_nlink);
-				printf(" %s", getpwuid(st.st_uid)->pw_name);
-				printf(" %s", getgrgid(st.st_gid)->gr_name);
+				name = getpwuid(st.st_uid)->pw_name;
+				group = getgrgid(st.st_gid)->gr_name;
+				printf(" %s", name);
+				for (int i = 0; i < max_name - strlen(name); ++i) {
+					printf(" ");
+				}
+				printf(" %s", group);
+				for (int i = 0; i < max_group - strlen(group); ++i) {
+					printf(" ");
+				}
+				printf(" %5ld", st.st_size);
 				time = localtime(&(st.st_atime));
-				printf("\t%s\n", temp->path);
-			}
-//			printf("%s\t%d\t%ld\t%d\t%ld\t%ld\n", st->st_size, st->st_blksize);
-		}
-		// format, mode, nlink, uid(1000), gid, byte(st_size), date, name 
+				printf(" %s %2d %02d:%02d", month[time->tm_mon], time->tm_mday, time->tm_hour, time->tm_min);
+				printf(" %s\n", temp->path);
 
+			}
+		}
 		else {
 			printf("%s\n", temp->path); 
 		}
 		temp = temp->next;
 	}
-
 }
