@@ -20,8 +20,6 @@
 #include <pwd.h>
 #include <grp.h>
 #include <time.h>
-#define BLK_SIZE 1024
-#define BUF_SIZE 512
 
 typedef struct s_list {
 	char *path; // file name
@@ -32,6 +30,7 @@ typedef struct s_list {
 
 void get_list(t_list **head, DIR *dirp);
 void sort_list(t_list **head);
+void print_node(char* path, size_t max_name, size_t max_group);
 void print_list(t_list **head);
 static int aflag = 0; // -a option
 static int lflag = 0; // -l option
@@ -39,7 +38,6 @@ static int lflag = 0; // -l option
 int main(int argc, char *argv[]) {
 	DIR *dirp; // directory stream
 	t_list *head; // head of list
-	char cwd[1024]; // path of current working directory	
 	int opt = 0; // return value of getopt
 
 	while ((opt = getopt(argc, argv, ":al")) != -1) {
@@ -57,18 +55,15 @@ int main(int argc, char *argv[]) {
 	}
 
 // optind는 옵션아닌 첫번째 index
-//	printf("%d, %d\n", argc, optind);
+	printf("%d, %d\n", argc, optind);
 	if (argc == optind) // default. open current directory ('.')
 		dirp = opendir(".");
-	else if (argc == optind+1) // one input. open certain directory 
+	else  {	// open certain directory 
 		dirp = opendir(argv[optind]);
-	if (dirp == NULL) { // exception : input path are not dir or not exist
-		fprintf(stderr, "cannot access '%s' : No such directory\n", argv[1]);
-		exit(1);
+		if (dirp == NULL) { // exception : input path are not exist
+			print_node(argv[optind], strlen(argv[optind]), strlen(argv[optind]));
+		}
 	}
-
-	getcwd(cwd, 1024);
-	printf("Directory path: %s\n", cwd);
 
 	printf("a = %d, l = %d\n", aflag, lflag);
 	get_list(&head, dirp); // make list of dirent
@@ -170,82 +165,93 @@ void sort_list(t_list **head) {
 	*head = sorted;
 }
 
-void print_list(t_list **head) {
-	size_t total = 0;
-	t_list *temp = (*head)->next; // point to first node of sorted list to print
+void print_node(char* path, size_t max_name, size_t max_group) {
 	struct stat st;
 	int mode;
 	struct tm *time;
 	char *month[12] = {"Jan", "Fab", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+	char* name;
+	char* group;
+
+	if (lflag > 0) {
+		if (lstat(path, &st) == 0) {
+			mode = st.st_mode;
+			if (S_ISREG(mode))
+				printf("-");
+			else if (S_ISDIR(mode)) 
+				printf("d"); 
+			else if (S_ISLNK(mode))
+				printf("l");
+			else if (S_ISBLK(mode))
+				printf("b"); //
+			else if (S_ISCHR(mode))
+				printf("c");
+			else if (S_ISFIFO(mode))
+				printf("f"); //
+			else if (S_ISSOCK(mode))
+				printf("s");
+			
+			mode %= (1<<10); 	
+			for (int i = 8; i >= 0; i--) {
+				if (mode>>i == 1) {
+					printf("%c", "xwr"[(i)%3]);
+					mode -= (1<<i);
+				}
+				else
+					printf("-");
+			}
+			printf(" %ld", st.st_nlink);
+			name = getpwuid(st.st_uid)->pw_name;
+			group = getgrgid(st.st_gid)->gr_name;
+			printf(" %s", name);
+			for (int i = 0; i < max_name - strlen(name); ++i) {
+				printf(" ");
+			}
+			printf(" %s", group);
+			for (int i = 0; i < max_group - strlen(group); ++i) {
+				printf(" ");
+			}
+			printf(" %5ld", st.st_size);
+			time = localtime(&(st.st_atime));
+			printf(" %s %2d %02d:%02d", month[time->tm_mon], time->tm_mday, time->tm_hour, time->tm_min);
+			printf(" %s\n", path);
+		}
+		else
+			fprintf(stderr, "cannot access %s: No such file or directory\n", path);
+	}
+	else 
+		printf("%s\n", path); 
+}
+
+void print_list(t_list **head) {
+	size_t total = 0;
+	t_list *temp = (*head)->next; // point to first node of sorted list to print
+	struct stat st;
 	size_t max_name = 0;
 	size_t max_group = 0;
 	char* name;
 	char* group;
 
 	lflag = 1;
-	while (temp) {
-		if (lflag > 0) {
+	if (lflag > 0) {
+		char cwd[1024]; // path of current working directory	
+		getcwd(cwd, 1024);
+		printf("Directory path: %s\n", cwd);
+		while (temp) {
 			if (lstat(temp->path, &st) == 0) {
 				total += st.st_blocks/2;
 				name = getpwuid(st.st_uid)->pw_name;
 				group = getgrgid(st.st_gid)->gr_name;
 				max_name = (strlen(name) > max_name ? strlen(name) : max_name);
 				max_group = (strlen(group) > max_group ? strlen(group) : max_group);				
-			} 
-		}
-		temp = temp->next;
-	}
-	printf("total %ld\n", total); 
-	temp = (*head)->next;
-	while (temp) { // print all the node
-		if (lflag > 0) {
-			if (lstat(temp->path, &st) == 0) {
-				mode = st.st_mode;
-				if (S_ISREG(mode))
-					printf("-");
-				else if (S_ISDIR(mode)) 
-					printf("d"); 
-				else if (S_ISLNK(mode))
-					printf("l");
-				else if (S_ISBLK(mode))
-					printf("b"); //
-				else if (S_ISCHR(mode))
-					printf("c");
-				else if (S_ISFIFO(mode))
-					printf("f"); //
-				else if (S_ISSOCK(mode))
-					printf("s");
-				
-				mode %= (1<<10); 	
-				for (int i = 8; i >= 0; i--) {
-					if (mode>>i == 1) {
-						printf("%c", "xwr"[(i)%3]);
-						mode -= (1<<i);
-					}
-					else
-						printf("-");
-				}
-				printf(" %ld", st.st_nlink);
-				name = getpwuid(st.st_uid)->pw_name;
-				group = getgrgid(st.st_gid)->gr_name;
-				printf(" %s", name);
-				for (int i = 0; i < max_name - strlen(name); ++i) {
-					printf(" ");
-				}
-				printf(" %s", group);
-				for (int i = 0; i < max_group - strlen(group); ++i) {
-					printf(" ");
-				}
-				printf(" %5ld", st.st_size);
-				time = localtime(&(st.st_atime));
-				printf(" %s %2d %02d:%02d", month[time->tm_mon], time->tm_mday, time->tm_hour, time->tm_min);
-				printf(" %s\n", temp->path);
-
 			}
+			temp = temp->next;
 		}
-		else {
-			printf("%s\n", temp->path); 
-		}
+		printf("total %ld\n", total); 
+		temp = (*head)->next;
+	}
+	while (temp) { // print all the node
+		print_node(temp->path, max_name, max_group);
 		temp = temp->next;
 	}
 }
