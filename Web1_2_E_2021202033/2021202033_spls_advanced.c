@@ -20,6 +20,8 @@
 #include <pwd.h>
 #include <grp.h>
 #include <time.h>
+#define BLK_SIZE 1024
+#define BUF_SIZE 512
 
 typedef struct s_list {
 	char *path; // file name
@@ -39,8 +41,6 @@ int main(int argc, char *argv[]) {
 	t_list *head; // head of list
 	char cwd[1024]; // path of current working directory	
 	int opt = 0; // return value of getopt
-	opterr = 0;
-
 
 	while ((opt = getopt(argc, argv, ":al")) != -1) {
 		switch(opt) {
@@ -55,6 +55,8 @@ int main(int argc, char *argv[]) {
 				break;
 		}
 	}
+
+// optind는 옵션아닌 첫번째 index
 
 	if (argc == optind) // default. open current directory ('.')
 		dirp = opendir(".");
@@ -169,98 +171,49 @@ void sort_list(t_list **head) {
 }
 
 void print_list(t_list **head) {
-	size_t total = 0;
+//	size_t total = 0;
 	t_list *temp = (*head)->next; // point to first node of sorted list to print
-	struct stat *st;
-	struct passwd *pw;
-	char *name;
-	struct group *gr;
-	struct tm *tm;
+	struct stat st;
 	int mode;
+	struct tm *time;
+	lflag = 1;
 
-//	printf("total : %d\n"); // 1kB
+//	printf("total : %d\n"); // 1kB stat구조체에 있는 것은 단위가 1k아님. 
 	while (temp) { // print all the node
 		if (lflag > 0) {
-			if (stat(temp->path, st) == 0) {
-				if ((st->st_mode)>>12 == 04) // 04(8진수) dir
-					printf("d");
-				else if ((st->st_mode)>>12 == 010) // 010(8진수) regular file
-					printf("-"); 
-				else if ((st->st_mode)>>12 == 012)
+			if (lstat(temp->path, &st) == 0) {
+				mode = st.st_mode;
+				if (S_ISREG(mode))
+					printf("-");
+				else if (S_ISDIR(mode)) 
+					printf("d"); 
+				else if (S_ISLNK(mode))
 					printf("l");
-
-				mode = st->st_mode%(1<<10); // 배열하고 for문으로 9개 압축
-				if (mode>>8 == 1) {
-					printf("r");
-					mode -= (1<<8);
+				else if (S_ISBLK(mode))
+					printf("b"); //
+				else if (S_ISCHR(mode))
+					printf("c");
+				else if (S_ISFIFO(mode))
+					printf("f"); //
+				else if (S_ISSOCK(mode))
+					printf("s");
+				
+				mode %= (1<<10); 	
+				for (int i = 8; i >= 0; i--) {
+					if (mode>>i == 1) {
+						printf("%c", "xwr"[(i)%3]);
+						mode -= (1<<i);
+					}
+					else
+						printf("-");
 				}
-				else
-					printf("-");
-	
-				if (mode>>7 == 1) {
-					printf("w");
-					mode -= (1<<7);
-				}
-				else
-					printf("-");
-		
-				if (mode>>6 == 1) {
-					printf("x"); 
-					mode -= (1<<6);
-				}
-				else
-					printf("-");
-
-				if (mode>>5 == 1) {
-					mode -= (1<<5);
-					printf("r");
-				}
-				else
-					printf("-");
-
-				if (mode>>4 == 1) {
-					printf("w");
-					mode -= (1<<4);
-				}
-				else
-					printf("-");
-
-				if (mode>>3 == 1) {
-					printf("x");
-					mode -= (1<<3);
-				}
-				else
-					printf("-");
-
-				if (mode>>2 == 1) {
-					mode -= (1<<2);
-					printf("r");
-				}
-				else
-					printf("-");
-
-				if (mode>>1 == 1) {
-					printf("w");
-					mode -= (1<<1);
-				}
-				else
-					printf("-");
-
-				if (mode == 1) 
-					printf("x");
-				else
-					printf("-");
-
-
-//				pw = getpwuid(st->st_uid);
-//				name = pw->pw_name;
-//				printf("%s\t", name);
+				printf(" %ld", st.st_nlink);
+				printf(" %s", getpwuid(st.st_uid)->pw_name);
+				printf(" %s", getgrgid(st.st_gid)->gr_name);
+				time = localtime(&(st.st_atime));
+				printf("\t%s\n", temp->path);
 			}
-			// rwx rwx rwx
-			// 111 111 111
-			printf("\t%o", st->st_mode);
-			printf("\t%s\n", temp->path);
-//			printf("%s\t%d\t%ld\t%d\t%ld\t%ld\n", temp->path, st->st_mode, st->st_nlink, st->st_uid, st->st_size, st->st_blksize);
+//			printf("%s\t%d\t%ld\t%d\t%ld\t%ld\n", st->st_size, st->st_blksize);
 		}
 		// format, mode, nlink, uid(1000), gid, byte(st_size), date, name 
 

@@ -12,7 +12,7 @@
 EXEC = spls_advanced
 CC = gcc
 SRCS = 2021202033_spls_advanced.c 
-FLGS = -g -Wall -Werror -Wextra # to detect warning and debug
+FLGS = -g# -Wall -Werror -Wextra # to detect warning and debug
 
 all : $(EXEC)
 
