@@ -28,7 +28,7 @@ typedef struct s_list {
 	struct s_list *prev; // will be used in sorting
 } t_list;
 
-void get_list(t_list **head, DIR *dirp);
+int get_list(t_list **head, DIR *dirp);
 void sort_list(t_list **head);
 void print_node(char* path, char *name);
 void print_list(t_list **head, char *path);
@@ -55,12 +55,13 @@ int main(int argc, char *argv[]) {
 				return 0;
 		}
 	}
+
 	if (argc == optind) { // default. open current directory ('.')
 		dirp = opendir(".");
 		get_list(&head, dirp); // make list of dirent
 		sort_list(&head); // sort list
 		if (lflag > 0) { // print path of current working directory	
-			char cwd[256]; 
+			char cwd[256];
 			getcwd(cwd, 256);
 			printf("Directory path: %s\n", cwd);
 		}
@@ -79,7 +80,8 @@ int main(int argc, char *argv[]) {
 				print_node(argv[i], argv[i]); // print certain file
 				continue;
 			}
-			get_list(&head, dirp); // make list of dirent
+			if (get_list(&head, dirp) == -1) // make list of dirent
+				continue; 
 			sort_list(&head); // sort list
 			if (lflag > 0)
 				printf("Directory path: %s\n", argv[i]); // print Directory path
@@ -116,12 +118,12 @@ void exception(char *path) {
 // ================================================================= //
 // Input: t_list** -> pointer of head, 								 //
 // 		  DIR* -> directory stream for getting directory entry info  //
-// Output: void 													 //
+// Output: int // success 0 fail -1									 //
 // Purpose: Make linked list which contain name of files in certain  //
 // 			directory to print out 									 //
 ///////////////////////////////////////////////////////////////////////
 
-void get_list(t_list **list, DIR *dirp) {
+int get_list(t_list **list, DIR *dirp) {
 	t_list *temp = 0; // temporary node
 	t_list *head = 0; // head
 	struct dirent *dir; // directory entry
@@ -153,6 +155,10 @@ void get_list(t_list **list, DIR *dirp) {
 				temp->compare[i] = toupper(temp->path[i]); 
 		}
 	}
+	if (head == 0)
+		return -1;
+	else
+		return 0;
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -171,6 +177,7 @@ void sort_list(t_list **head) {
 	char *min; 
 	size_t size; // flag for using while condition
 	do {
+		printf("%s", temp->compare);
 		size = 0;
 		temp = (*head)->next; // point to first component
 		if (temp) { // setting for comparing
