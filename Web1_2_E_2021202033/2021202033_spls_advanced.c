@@ -1,6 +1,6 @@
 ///////////////////////////////////////////////////////////////////////
 // File Name : 2021202033_spls_advanced.c							 //
-// Date : 2023/03/25	 											 //
+// Date : 2023/04/02	 											 //
 // Os : Ubuntu 16.04 LTS 64bits 									 //
 // Author : Sung Min Yoon 									 	 	 //
 // Student ID : 2021202033											 //
@@ -16,22 +16,24 @@
 #include <string.h> // for strlen
 #include <unistd.h> // for option
 #include <sys/stat.h>
-#include <sys/types.h> 
+#include <sys/types.h>
 #include <pwd.h>
 #include <grp.h>
 #include <time.h>
 
 typedef struct s_list {
-	char *path; // file name
-	char *compare; // to dismiss alphabet lower & upper case
+	char path[256]; // file name
+	char compare[256]; // to dismiss alphabet lower & upper case, hidden file
 	struct s_list *next;
 	struct s_list *prev; // will be used in sorting
 } t_list;
 
 void get_list(t_list **head, DIR *dirp);
 void sort_list(t_list **head);
-void print_node(char* path, size_t max_name, size_t max_group);
-void print_list(t_list **head);
+void print_node(char* path, char *name);
+void print_list(t_list **head, char *path);
+void exception(char *path);
+
 static int aflag = 0; // -a option
 static int lflag = 0; // -l option
 
@@ -40,7 +42,7 @@ int main(int argc, char *argv[]) {
 	t_list *head; // head of list
 	int opt = 0; // return value of getopt
 
-	while ((opt = getopt(argc, argv, ":al")) != -1) {
+	while ((opt = getopt(argc, argv, ":al")) != -1) { 
 		switch(opt) {
 			case 'a': // -a option 
 				aflag++;
@@ -49,28 +51,64 @@ int main(int argc, char *argv[]) {
 				lflag++;
 				break;
 			case '?': // other undefined options
-				fprintf(stderr, "%s: invalid option\nTry 'ls --help' for more information.\n", argv[0]+2);
-				break;
+				fprintf(stderr, "%s: invalid option.\nonly a and l options are allowed.\n", argv[0]+2);
+				return 0;
 		}
 	}
-
-// optind는 옵션아닌 첫번째 index
-	printf("%d, %d\n", argc, optind);
-	if (argc == optind) // default. open current directory ('.')
+	if (argc == optind) { // default. open current directory ('.')
 		dirp = opendir(".");
-	else  {	// open certain directory 
-		dirp = opendir(argv[optind]);
-		if (dirp == NULL) { // exception : input path are not exist
-			print_node(argv[optind], strlen(argv[optind]), strlen(argv[optind]));
+		get_list(&head, dirp); // make list of dirent
+		sort_list(&head); // sort list
+		if (lflag > 0) { // print path of current working directory	
+			char cwd[256]; 
+			getcwd(cwd, 256);
+			printf("Directory path: %s\n", cwd);
+		}
+		print_list(&head, 0); // print list
+		closedir(dirp);
+	}
+	else  {	// open certain path
+		for (int i = 1; i < argc; i++) { // for print error first
+			if (argv[i][0] == '-') continue; // pass option
+			exception(argv[i]);
+		}
+		for (int i = 1; i < argc; i++) { 
+			if (argv[i][0] == '-') continue; // pass option
+			dirp = opendir(argv[i]);
+			if (dirp == NULL) { // exception : input path are not directory
+				print_node(argv[i], argv[i]); // print certain file
+				continue;
+			}
+			get_list(&head, dirp); // make list of dirent
+			sort_list(&head); // sort list
+			if (lflag > 0)
+				printf("Directory path: %s\n", argv[i]); // print Directory path
+			print_list(&head, argv[i]); // print list
+			closedir(dirp);
 		}
 	}
-
-	printf("a = %d, l = %d\n", aflag, lflag);
-	get_list(&head, dirp); // make list of dirent
-	sort_list(&head); // sort list
-	print_list(&head); // print list
-	closedir(dirp);
 	return 0;
+}
+
+///////////////////////////////////////////////////////////////////////
+// exception														 //
+// ================================================================= //
+// Input: char* -> path string to check which is exist or not	     //
+// Output: void 													 //
+// Purpose: error print when path is not exist						 //
+///////////////////////////////////////////////////////////////////////
+
+void exception(char *path) {
+	DIR *dirp;
+	struct stat st;
+
+	dirp = opendir(path);
+	if (dirp == NULL) {
+		if (lstat(path, &st) == -1) { // exception : path is not exist
+			fprintf(stderr, "cannot access %s: No such file or directory\n", path);
+			return;
+		}
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -94,8 +132,6 @@ void get_list(t_list **list, DIR *dirp) {
 			head = (t_list *)malloc(sizeof(t_list));
 			if (!head) // exception : bad allocation
 				exit(1);
-			head->path = 0; 
-			head->compare = 0;
 			head->prev = 0;
 			*list = head;
 		}
@@ -106,12 +142,9 @@ void get_list(t_list **list, DIR *dirp) {
 			exit(1);
 		head->next = temp;
 		temp->prev = head;
-		temp->path = dir->d_name;
+		strcpy(temp->path, dir->d_name);
 		temp->next = 0;
-		temp->compare = (char *)malloc(sizeof(char)*strlen(temp->path)); // upper version of name to compare without u/lcase
-		if (!temp->compare) // exception : bad allocatoin
-			exit(1);
-		if (aflag && temp->path[0] == '.') { // hidden file
+		if (aflag && temp->path[0] == '.') { // hidden file, to dismiss '.' when comparing 
 			for (size_t i = 0; i < strlen(temp->path); i++) // toupper and copy 
 				temp->compare[i] = toupper(temp->path[i+1]); 		
 		}
@@ -123,11 +156,11 @@ void get_list(t_list **list, DIR *dirp) {
 }
 
 ///////////////////////////////////////////////////////////////////////
-// sort_n_print														 //
+// sort_list														 //
 // ================================================================= //
 // Input: t_list** -> pointer of head								 //
 // Output: void 													 //
-// Purpose: Sorting linked list(using selection sort) and print out	 //
+// Purpose: Sort linked list(using selection sort) 					 //
 ///////////////////////////////////////////////////////////////////////
 
 void sort_list(t_list **head) {
@@ -165,93 +198,103 @@ void sort_list(t_list **head) {
 	*head = sorted;
 }
 
-void print_node(char* path, size_t max_name, size_t max_group) {
+///////////////////////////////////////////////////////////////////////
+// print_node														 //
+// ================================================================= //
+// Input: char* path -> full path of file							 //
+//		  char* name -> name of file								 //
+// Output: void 													 //
+// Purpose: Print file information									 //
+///////////////////////////////////////////////////////////////////////
+
+void print_node(char* path, char* name) {
 	struct stat st;
+	if (lstat(path, &st) == -1) { // exception : path is not exist
+		return;
+	}
+	if (lflag == 0) { // print the file name
+		printf("%s\n", name); 
+		return ;
+	}
+
+	// print the file information (-l option)
 	int mode;
 	struct tm *time;
 	char *month[12] = {"Jan", "Fab", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
-	char* name;
-	char* group;
 
-	if (lflag > 0) {
-		if (lstat(path, &st) == 0) {
-			mode = st.st_mode;
-			if (S_ISREG(mode))
-				printf("-");
-			else if (S_ISDIR(mode)) 
-				printf("d"); 
-			else if (S_ISLNK(mode))
-				printf("l");
-			else if (S_ISBLK(mode))
-				printf("b"); //
-			else if (S_ISCHR(mode))
-				printf("c");
-			else if (S_ISFIFO(mode))
-				printf("f"); //
-			else if (S_ISSOCK(mode))
-				printf("s");
-			
-			mode %= (1<<10); 	
-			for (int i = 8; i >= 0; i--) {
-				if (mode>>i == 1) {
-					printf("%c", "xwr"[(i)%3]);
-					mode -= (1<<i);
-				}
-				else
-					printf("-");
-			}
-			printf(" %ld", st.st_nlink);
-			name = getpwuid(st.st_uid)->pw_name;
-			group = getgrgid(st.st_gid)->gr_name;
-			printf(" %s", name);
-			for (int i = 0; i < max_name - strlen(name); ++i) {
-				printf(" ");
-			}
-			printf(" %s", group);
-			for (int i = 0; i < max_group - strlen(group); ++i) {
-				printf(" ");
-			}
-			printf(" %5ld", st.st_size);
-			time = localtime(&(st.st_atime));
-			printf(" %s %2d %02d:%02d", month[time->tm_mon], time->tm_mday, time->tm_hour, time->tm_min);
-			printf(" %s\n", path);
+	mode = st.st_mode; // print file format
+	if (S_ISREG(mode))	// regular file
+		printf("-"); 
+	else if (S_ISDIR(mode)) // directory
+		printf("d"); 
+	else if (S_ISLNK(mode)) // symbolic link
+		printf("l");
+	else if (S_ISBLK(mode)) // block special file
+		printf("b"); 
+	else if (S_ISCHR(mode)) // character special file
+		printf("c");
+	else if (S_ISFIFO(mode)) // fifo
+		printf("f"); 
+	else if (S_ISSOCK(mode)) // socket
+		printf("s");
+	
+	mode %= (1<<10); // print file permission
+	for (int i = 8; i >= 0; i--) {
+		if (mode>>i == 1) { // check bit by bit
+			printf("%c", "xwr"[(i)%3]);
+			mode -= (1<<i);
 		}
 		else
-			fprintf(stderr, "cannot access %s: No such file or directory\n", path);
+			printf("-"); // permission 
 	}
-	else 
-		printf("%s\n", path); 
+	printf("\t%ld", st.st_nlink); // print the number of hard links
+	printf("\t%s\t%s\t%5ld", getpwuid(st.st_uid)->pw_name, getgrgid(st.st_gid)->gr_name, st.st_size); // print the author and group name, size of file
+	time = localtime(&(st.st_atime));
+	printf("\t%s %2d %02d:%02d", month[time->tm_mon], time->tm_mday, time->tm_hour, time->tm_min); // print the access time in certain format
+	printf("\t%s\n", name); // print file name
 }
 
-void print_list(t_list **head) {
-	size_t total = 0;
-	t_list *temp = (*head)->next; // point to first node of sorted list to print
-	struct stat st;
-	size_t max_name = 0;
-	size_t max_group = 0;
-	char* name;
-	char* group;
+///////////////////////////////////////////////////////////////////////
+// print_list														 //
+// ================================================================= //
+// Input: t_list** -> pointer of head								 //
+// Output: void 													 //
+// Purpose: Print linked list										 //
+///////////////////////////////////////////////////////////////////////
 
-	lflag = 1;
-	if (lflag > 0) {
-		char cwd[1024]; // path of current working directory	
-		getcwd(cwd, 1024);
-		printf("Directory path: %s\n", cwd);
+void print_list(t_list **head, char *path) {
+	t_list *temp = (*head)->next; // point to first node of sorted list to print
+	size_t total = 0;
+	struct stat st;
+	char full_path[256];
+
+	if (lflag > 0) { // count and print total size of dir
 		while (temp) {
-			if (lstat(temp->path, &st) == 0) {
-				total += st.st_blocks/2;
-				name = getpwuid(st.st_uid)->pw_name;
-				group = getgrgid(st.st_gid)->gr_name;
-				max_name = (strlen(name) > max_name ? strlen(name) : max_name);
-				max_group = (strlen(group) > max_group ? strlen(group) : max_group);				
+			if (path) { // make absolute path to get info
+				strcpy(full_path, path);
+				full_path[strlen(path)] = '/';
+				strcpy(full_path + strlen(path) + 1, temp->path);
+			}
+			else // use relative path
+				strcpy(full_path, temp->path);
+			if (lstat(full_path, &st) == 0) {
+				total += st.st_blocks/2; // count total block size
 			}
 			temp = temp->next;
 		}
-		printf("total %ld\n", total); 
+		printf("total %ld\n", total);  // print total size of dir
 		temp = (*head)->next;
 	}
 	while (temp) { // print all the node
-		print_node(temp->path, max_name, max_group);
-		temp = temp->next;
+		if (path) {
+			strcpy(full_path, path); // make absolute path to get info
+			full_path[strlen(path)] = '/';
+			strcpy(full_path + strlen(path) + 1, temp->path);
+		}
+		else // use relative path
+			strcpy(full_path, temp->path);
+		print_node(full_path, temp->path); // print each file
+		memset(full_path, '\0', 256); // reset full_path
+		temp = temp->next; 
 	}
 }
