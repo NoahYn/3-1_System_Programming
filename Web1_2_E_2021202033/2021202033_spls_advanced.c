@@ -177,7 +177,6 @@ void sort_list(t_list **head) {
 	char *min; 
 	size_t size; // flag for using while condition
 	do {
-		printf("%s", temp->compare);
 		size = 0;
 		temp = (*head)->next; // point to first component
 		if (temp) { // setting for comparing
