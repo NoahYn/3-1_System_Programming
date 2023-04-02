@@ -240,7 +240,7 @@ void print_node(char* path, char* name) {
 	else if (S_ISCHR(mode)) // character special file
 		printf("c");
 	else if (S_ISFIFO(mode)) // fifo
-		printf("f"); 
+		printf("p"); 
 	else if (S_ISSOCK(mode)) // socket
 		printf("s");
 	
