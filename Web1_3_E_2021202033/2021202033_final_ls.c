@@ -221,6 +221,12 @@ void sort_list(t_list **head) {
 							min_size = temp->next->st.st_size;
 							s_min = temp->next;
 						}
+						if (min_size == temp->next->st.st_size) { // if file size is same
+							if (strcmp(min_path, temp->next->compare) > 0) { // select when next name is bigger
+								min_path = temp->next->compare; // max_path
+								s_min = temp->next; // s_max
+							}
+						}
 					}
 					else { // rflag == 0
 						if (min_size < temp->next->st.st_size) { // select when next size is bigger
