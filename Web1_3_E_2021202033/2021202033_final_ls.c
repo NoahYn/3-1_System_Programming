@@ -21,11 +21,12 @@
 #include <grp.h> // for groupgid
 #include <time.h> // time
 
+#define K 1024
 typedef struct s_list {
 	char path[256]; // file name
 	char compare[256]; // to dismiss alphabet lower & upper case, hidden file
 	struct s_list *next;
-	struct s_list *prev; // will be used in sorting
+	struct s_list *prev; // use when sorting
 } t_list;
 
 int get_list(t_list **head, DIR *dirp);
@@ -40,12 +41,16 @@ static int hflag = 0; // -h option
 static int rflag = 0; // -r option
 static int sflag = 0; // -S option
 
+static int nlink = 0; // padding for -l nlink to align
+static int nname = 0; // padding for -l username to align 
+static int ngroup = 0; // padding for -l group to align 
+
 int main(int argc, char *argv[]) {
 	DIR *dirp; // directory stream
 	t_list *head; // head of list
 	int opt = 0; // return value of getopt
 
-	while ((opt = getopt(argc, argv, ":alhrS")) != -1) { 
+	while ((opt = getopt(argc, argv, ":alhrS")) != -1) { // option handling
 		switch(opt) {
 			case 'a': // -a option 
 				aflag++;
@@ -89,6 +94,7 @@ int main(int argc, char *argv[]) {
 			if (argv[i][0] == '-') continue; // pass option
 			dirp = opendir(argv[i]);
 			if (dirp == NULL) { // exception : input path are not directory
+				nlink = 0; nname = 0; ngroup = 0; // not necessary to align (just one thing to print)
 				print_node(argv[i], argv[i]); // print certain file
 				continue;
 			}
@@ -197,9 +203,17 @@ void sort_list(t_list **head) {
 		}
 		while (temp) {
 			if (temp->next) { // comparing minimum with next node's name
-				if (strcmp(min, temp->next->compare) > 0) { // select when next name is smaller
-					min = temp->next->compare;
-					s_min = temp->next;
+				if (rflag == 0) { 
+					if (strcmp(min, temp->next->compare) > 0) { // select when next name is smaller
+						min = temp->next->compare;
+						s_min = temp->next;
+					}
+				}
+				else { // rflag 
+					if (strcmp(min, temp->next->compare) < 0) { // select when next name is bigger
+						min = temp->next->compare;
+						s_min = temp->next;
+					}
 				}
 			}
 			temp = temp->next; // move to next node
@@ -237,7 +251,7 @@ void print_node(char* path, char* name) {
 
 	// print the file information (-l option)
 	int mode;
-	struct tm *time;
+	struct tm *tm;
 	const char *month[12] = {"Jan", "Fab", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}; // month array
 	int xflag = 0;
 
@@ -260,33 +274,53 @@ void print_node(char* path, char* name) {
 	mode %= (1<<10); // print file permission
 	for (int i = 8; i >= 0; i--) {
 		if (mode>>i == 1) { // check bit by bit
-			printf("%c", "xwr"[i%3]);
+			printf("%c", "xwr"[i%3]); // permission
 			if (i%3 == 0) xflag++;
 			mode -= (1<<i);
 		}
 		else
-			printf("-"); // permission 
+			printf("-"); // permission x
 	}
-	printf(" %ld", st.st_nlink); // print the number of hard links
-	printf(" %s %s", getpwuid(st.st_uid)->pw_name, getgrgid(st.st_gid)->gr_name); // print the author and group name
-	printf(" %5.0lu ", st.st_size);
-/*
+
+	if (nlink == 0) printf(" %ld", st.st_nlink); // print the number of hard links
+	else printf(" %*ld", nlink, st.st_nlink); // print the number of hard links aligned version
+
+	if (nname == 0 && ngroup == 0) printf(" %s %s", getpwuid(st.st_uid)->pw_name, getgrgid(st.st_gid)->gr_name); // print the author and group name
+	else printf(" %-*s %-*s", nname, getpwuid(st.st_uid)->pw_name, ngroup, getgrgid(st.st_gid)->gr_name); // print the author and group name aligned version
 
 	if (hflag == 0)
-		printf("\t%5ld", st.st_size); // print the size of file
+		printf("\t%5lu", st.st_size); // print the size of file
 	else {
-		char size[5] = {'K', 'M', 'G', 'T', 'P'}; 
-		
-		// 864 -> 864
-		// 9201 -> 9.2K
-		// 4096 -> 4.1K
-		// 17912 -> 18K
-		// 10241 -> 11K
-		// 10240 -> 10K
+		size_t size = st.st_size;
+		if (size >> 10 == 0) printf(" %4ld", size); // size < 1024 -> just print
+		else { // size >= 1024 -> parsing
+			int i;
+			for (i = 0; i < 5; i++) { // one loop moves one prefix
+				float temp = (float)size / 1024; 
+				if (temp < 10) { // print as n.n form
+					temp *= 10; 
+					if (size % 1024) temp += 1; // if there's remain -> ceil operation
+					printf(" %1d.%d%c", (int)temp/10, (int)temp%10, "KMGTP"[i]); // print n.nx
+					break;
+				}
+				else if (temp < 1024) {
+					if (size % 1024) temp += 1; // if remain -> ceil operation
+					printf(" %3d%c", (int)temp, "KMGTP"[i]); // print nx
+					break;
+				}
+				else 
+					size /= 1024; // next prefix
+			}
+		}
 	}
-*/
-	time = localtime(&(st.st_atime));
-	printf(" %s %2d %02d:%02d", month[time->tm_mon], time->tm_mday, time->tm_hour, time->tm_min); // print the access time in certain format
+
+	time_t now = time(0);
+	int this_year = localtime(&now)->tm_year;
+	tm = localtime(&(st.st_mtime));
+	printf(" %s %2d", month[tm->tm_mon], tm->tm_mday); // print the access time in certain format
+	if (tm->tm_year != this_year) printf("  %d", tm->tm_year + 1900);
+	else printf(" %02d:%02d", tm->tm_hour, tm->tm_min); 
+
 	if (S_ISLNK(st.st_mode)) { // symbolic link file
 		printf(" \033[96m\033[1m%s \033[0m ->", name); // set color as bold bright cyan and reset (can see in man console_codes(4))
 		readlink(path, name, 254); // get the name linked by symlink
@@ -299,7 +333,7 @@ void print_node(char* path, char* name) {
 	else if (S_ISFIFO(st.st_mode)) printf(" \033[33m\033[1m\033[2m%s\033[0m\n", name); // print the fifo name(bold half-bright brown)
 	else if (S_ISSOCK(st.st_mode)) printf(" \033[35m\033[1m%s\033[0m\n", name); // print the socket name (bold magenta)
 	else if (xflag) printf(" \033[92m\033[1m%s\033[0m\n", name); // print the execute file name(bold bright green)
-	else printf(" %s\n", name);
+	else printf(" %s\n", name); // print regular file
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -327,10 +361,41 @@ void print_list(t_list **head, char *path) {
 				strcpy(full_path, temp->path);
 			if (lstat(full_path, &st) == 0) {
 				total += st.st_blocks/2; // count total block size
+				if (nname < strlen(getpwuid(st.st_uid)->pw_name)) nname = strlen(getpwuid(st.st_uid)->pw_name); // set nname
+				if (ngroup < strlen(getgrgid(st.st_gid)->gr_name)) ngroup = strlen(getgrgid(st.st_gid)->gr_name); // set ngroup
+				int temp = st.st_nlink; 
+				int numlen = 1; // count length of nlink
+				while (temp) {
+					temp /= 10;
+					if (temp > 0) numlen++;
+				}
+				if (nlink < numlen) nlink = numlen; // set nlink
 			}
 			temp = temp->next;
 		}
-		printf("total %ld\n", total);  // print total size of dir
+		if (hflag == 0)	printf("total %ld\n", total);  // print total size of dir
+		else { // hflag
+			if (total >> 10 == 0) printf("total %ldK\n", total); // size < 1024 -> just print with K
+			else { // size >= 1024 -> parsing
+				int i;
+				for (i = 0; i < 4; i++) { // one loop moves one prefix
+					float temp = (float)total / 1024;
+					if (temp < 10) { // print as n.n form
+						temp *= 10; 
+						if (total % 1024) temp += 1; // if there's remain -> ceil operation
+						printf("total %1d.%d%c\n", (int)temp/10, (int)temp%10, "MGTP"[i]); // print n.nx
+						break;
+					}
+					else if (temp < 1024) {
+						if (total % 1024) temp += 1; // if remain -> ceil operation
+						printf("total %3d%c\n", (int)temp, "MGTP"[i]); // print nx
+						break;
+					}
+					else 
+						total /= 1024; // next prefix
+				}
+			}
+		}
 		temp = (*head)->next;
 	}
 	while (temp) { // print all the node
