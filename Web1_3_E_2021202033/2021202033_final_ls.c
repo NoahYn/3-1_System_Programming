@@ -15,12 +15,11 @@
 #include <ctype.h> // for toupper
 #include <string.h> // for strlen
 #include <unistd.h> // for option
-#include <fnmatch.h> // for wild card matching
 #include <sys/stat.h> // for stat
-#include <sys/types.h> // for type
+#include <sys/types.h> 
 #include <pwd.h> // for pwduid
-#include <grp.h> // for grpgid
-#include <time.h> // for time
+#include <grp.h> // for groupgid
+#include <time.h> // time
 
 typedef struct s_list {
 	char path[256]; // file name
@@ -37,19 +36,31 @@ void exception(char *path);
 
 static int aflag = 0; // -a option
 static int lflag = 0; // -l option
+static int hflag = 0; // -h option
+static int rflag = 0; // -r option
+static int sflag = 0; // -S option
 
 int main(int argc, char *argv[]) {
 	DIR *dirp; // directory stream
 	t_list *head; // head of list
 	int opt = 0; // return value of getopt
 
-	while ((opt = getopt(argc, argv, ":al")) != -1) { 
+	while ((opt = getopt(argc, argv, ":alhrS")) != -1) { 
 		switch(opt) {
 			case 'a': // -a option 
 				aflag++;
 				break;
 			case 'l': // -l option
 				lflag++;
+				break;
+			case 'h': // -h option
+				hflag++;
+				break;
+			case 'r': // -r option
+				rflag++;
+				break;
+			case 'S': // -S option
+				sflag++;
 				break;
 			case '?': // other undefined options
 				fprintf(stderr, "%s: invalid option.\nonly a and l options are allowed.\n", argv[0]+2);
@@ -227,7 +238,8 @@ void print_node(char* path, char* name) {
 	// print the file information (-l option)
 	int mode;
 	struct tm *time;
-	char *month[12] = {"Jan", "Fab", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+	const char *month[12] = {"Jan", "Fab", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}; // month array
+	int xflag = 0;
 
 	mode = st.st_mode; // print file format
 	if (S_ISREG(mode))	// regular file
@@ -248,17 +260,46 @@ void print_node(char* path, char* name) {
 	mode %= (1<<10); // print file permission
 	for (int i = 8; i >= 0; i--) {
 		if (mode>>i == 1) { // check bit by bit
-			printf("%c", "xwr"[(i)%3]);
+			printf("%c", "xwr"[i%3]);
+			if (i%3 == 0) xflag++;
 			mode -= (1<<i);
 		}
 		else
 			printf("-"); // permission 
 	}
-	printf("\t%ld", st.st_nlink); // print the number of hard links
-	printf("\t%s\t%s\t%5ld", getpwuid(st.st_uid)->pw_name, getgrgid(st.st_gid)->gr_name, st.st_size); // print the author and group name, size of file
+	printf(" %ld", st.st_nlink); // print the number of hard links
+	printf(" %s %s", getpwuid(st.st_uid)->pw_name, getgrgid(st.st_gid)->gr_name); // print the author and group name
+	printf(" %5.0lu ", st.st_size);
+/*
+
+	if (hflag == 0)
+		printf("\t%5ld", st.st_size); // print the size of file
+	else {
+		char size[5] = {'K', 'M', 'G', 'T', 'P'}; 
+		
+		// 864 -> 864
+		// 9201 -> 9.2K
+		// 4096 -> 4.1K
+		// 17912 -> 18K
+		// 10241 -> 11K
+		// 10240 -> 10K
+	}
+*/
 	time = localtime(&(st.st_atime));
-	printf("\t%s %2d %02d:%02d", month[time->tm_mon], time->tm_mday, time->tm_hour, time->tm_min); // print the access time in certain format
-	printf("\t%s\n", name); // print file name
+	printf(" %s %2d %02d:%02d", month[time->tm_mon], time->tm_mday, time->tm_hour, time->tm_min); // print the access time in certain format
+	if (S_ISLNK(st.st_mode)) { // symbolic link file
+		printf(" \033[96m\033[1m%s \033[0m ->", name); // set color as bold bright cyan and reset (can see in man console_codes(4))
+		readlink(path, name, 254); // get the name linked by symlink
+		xflag = 0;
+		if (stat(name, &st) == -1) return; // exception : path is not exist
+		if ((st.st_mode & S_IXUSR) || (st.st_mode & S_IXGRP) || (st.st_mode & S_IXOTH)) xflag++; // if the file is execute file
+	}
+	if (S_ISDIR(st.st_mode)) printf(" \033[34m\033[1m%s\033[0m\n", name); // print the dir name(bold blue)
+	else if (S_ISCHR(st.st_mode) || S_ISBLK(st.st_mode)) printf(" \033[33m\033[1m%s\033[0m\n", name); // print the charcter/block special file name(bold brown(yellow))
+	else if (S_ISFIFO(st.st_mode)) printf(" \033[33m\033[1m\033[2m%s\033[0m\n", name); // print the fifo name(bold half-bright brown)
+	else if (S_ISSOCK(st.st_mode)) printf(" \033[35m\033[1m%s\033[0m\n", name); // print the socket name (bold magenta)
+	else if (xflag) printf(" \033[92m\033[1m%s\033[0m\n", name); // print the execute file name(bold bright green)
+	else printf(" %s\n", name);
 }
 
 ///////////////////////////////////////////////////////////////////////
