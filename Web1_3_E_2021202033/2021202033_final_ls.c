@@ -20,6 +20,7 @@
 #include <pwd.h> // for pwduid
 #include <grp.h> // for groupgid
 #include <time.h> // time
+#include <fnmatch.h> // fnmatching
 
 #define K 1024
 typedef struct s_list {
@@ -74,16 +75,14 @@ int main(int argc, char *argv[]) {
 				return 0;
 		}
 	}
-
+	
+	char cwd[256];
+	getcwd(cwd, 256);
 	if (argc == optind) { // default. open current directory ('.')
 		dirp = opendir(".");
 		get_list(&head, dirp, 0); // make list of dirent
 		sort_list(&head); // sort list
-		if (lflag > 0) { // print path of current working directory	
-			char cwd[256];
-			getcwd(cwd, 256);
-			printf("Directory path: %s\n", cwd);
-		}
+		if (lflag > 0) printf("Directory path: %s\n", cwd);	// print path of current working directory	
 		print_list(&head); // print list
 		closedir(dirp);
 	}
@@ -94,6 +93,12 @@ int main(int argc, char *argv[]) {
 		}
 		for (int i = 1; i < argc; i++) { 
 			if (argv[i][0] == '-') continue; // pass option
+			//if (!fnmatch(argv[i], cwd, FNM_PATHNAME)) {
+			//	strcpy(argv[i], ".");
+			//}
+
+			// ./spls ~ '*' 순서가 *먼저나오는 이유
+			// 
 			dirp = opendir(argv[i]);
 			if (dirp == NULL) { // exception : input path are not directory
 				print_node(argv[i], argv[i]); // print certain file
@@ -124,6 +129,7 @@ void exception(char *path) {
 	DIR *dirp;
 	struct stat st;
 
+	if (strchr(path, '*')) return;
 	dirp = opendir(path);
 	if (dirp == NULL) {
 		if (lstat(path, &st) == -1) { // exception : path is not exist
