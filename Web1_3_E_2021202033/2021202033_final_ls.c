@@ -24,15 +24,17 @@
 #define K 1024
 typedef struct s_list {
 	char path[256]; // file name
+	char fullpath[256]; // absolute path
 	char compare[256]; // to dismiss alphabet lower & upper case, hidden file
+	struct stat st; // file stat
 	struct s_list *next;
 	struct s_list *prev; // use when sorting
 } t_list;
 
-int get_list(t_list **head, DIR *dirp);
+int get_list(t_list **head, DIR *dirp, char *path);
 void sort_list(t_list **head);
 void print_node(char* path, char *name);
-void print_list(t_list **head, char *path);
+void print_list(t_list **head);
 void exception(char *path);
 
 static int aflag = 0; // -a option
@@ -75,14 +77,14 @@ int main(int argc, char *argv[]) {
 
 	if (argc == optind) { // default. open current directory ('.')
 		dirp = opendir(".");
-		get_list(&head, dirp); // make list of dirent
+		get_list(&head, dirp, 0); // make list of dirent
 		sort_list(&head); // sort list
 		if (lflag > 0) { // print path of current working directory	
 			char cwd[256];
 			getcwd(cwd, 256);
 			printf("Directory path: %s\n", cwd);
 		}
-		print_list(&head, 0); // print list
+		print_list(&head); // print list
 		closedir(dirp);
 	}
 	else  {	// open certain path
@@ -94,17 +96,17 @@ int main(int argc, char *argv[]) {
 			if (argv[i][0] == '-') continue; // pass option
 			dirp = opendir(argv[i]);
 			if (dirp == NULL) { // exception : input path are not directory
-				nlink = 0; nname = 0; ngroup = 0; // not necessary to align (just one thing to print)
 				print_node(argv[i], argv[i]); // print certain file
 				continue;
 			}
-			if (get_list(&head, dirp) == -1) // make list of dirent
+			if (get_list(&head, dirp, argv[i]) == -1) // make list of dirent
 				continue; 
 			sort_list(&head); // sort list
 			if (lflag > 0)
 				printf("Directory path: %s\n", argv[i]); // print Directory path
-			print_list(&head, argv[i]); // print list
+			print_list(&head); // print list
 			closedir(dirp);
+			if (i+1 < argc) printf("\n");
 		}
 	}
 	return 0;
@@ -141,7 +143,7 @@ void exception(char *path) {
 // 			directory to print out 									 //
 ///////////////////////////////////////////////////////////////////////
 
-int get_list(t_list **list, DIR *dirp) {
+int get_list(t_list **list, DIR *dirp, char *path) {
 	t_list *temp = 0; // temporary node
 	t_list *head = 0; // head
 	struct dirent *dir; // directory entry
@@ -163,6 +165,14 @@ int get_list(t_list **list, DIR *dirp) {
 		head->next = temp;
 		temp->prev = head;
 		strcpy(temp->path, dir->d_name);
+		if (path) { // make absolute pat to get stat
+			strcpy(temp->fullpath, path);
+			temp->fullpath[strlen(path)] = '/';
+			strcpy(temp->fullpath + strlen(path) + 1, temp->path);
+		}
+		else // use relative path
+			strcpy(temp->fullpath, temp->path);
+		lstat(temp->fullpath, &temp->st); // get stat
 		temp->next = 0;
 		if (aflag && temp->path[0] == '.') { // hidden file, to dismiss '.' when comparing 
 			for (size_t i = 0; i < strlen(temp->path); i++) // toupper and copy 
@@ -192,27 +202,45 @@ void sort_list(t_list **head) {
 	t_list *sorted = (t_list*)malloc(sizeof(t_list)); // new head of sorted list
 	t_list *s_temp = sorted; // temporary node for sorted list
 	t_list *s_min; // select minimum(most left component)
-	char *min; 
+	char *min_path; 
+	size_t min_size;
 	size_t size; // flag for using while condition
 	do {
 		size = 0;
 		temp = (*head)->next; // point to first component
 		if (temp) { // setting for comparing
-			min = temp->compare;
+			min_path= temp->compare;
 			s_min = temp;
+			if (sflag > 0) min_size = temp->st.st_size;
 		}
 		while (temp) {
 			if (temp->next) { // comparing minimum with next node's name
-				if (rflag == 0) { 
-					if (strcmp(min, temp->next->compare) > 0) { // select when next name is smaller
-						min = temp->next->compare;
-						s_min = temp->next;
+				if (sflag > 0) { // sflag
+					if (rflag > 0) { // rflag
+						if (min_size > temp->next->st.st_size) { // select when next size is smaller
+							min_size = temp->next->st.st_size;
+							s_min = temp->next;
+						}
+					}
+					else { // rflag == 0
+						if (min_size < temp->next->st.st_size) { // select when next size is bigger
+							min_size = temp->next->st.st_size; // max_size
+							s_min = temp->next; // s_max
+						}
 					}
 				}
-				else { // rflag 
-					if (strcmp(min, temp->next->compare) < 0) { // select when next name is bigger
-						min = temp->next->compare;
-						s_min = temp->next;
+				else { // sflag == 0, default
+					if (rflag > 0) { // rflag  
+						if (strcmp(min_path, temp->next->compare) < 0) { // select when next name is bigger
+							min_path= temp->next->compare; // max_path
+							s_min = temp->next; // s_max
+						}
+					}
+					else { // rflag == 0, default
+						if (strcmp(min_path, temp->next->compare) < 0) { // select when next name is smaller
+							min_path= temp->next->compare;
+							s_min = temp->next;
+						}
 					}
 				}
 			}
@@ -271,15 +299,23 @@ void print_node(char* path, char* name) {
 	else if (S_ISSOCK(mode)) // socket
 		printf("s");
 	
-	mode %= (1<<10); // print file permission
+	mode %= (1<<9); // print file permission
 	for (int i = 8; i >= 0; i--) {
 		if (mode>>i == 1) { // check bit by bit
-			printf("%c", "xwr"[i%3]); // permission
-			if (i%3 == 0) xflag++;
+			if (i%3 == 0) {
+				xflag++;
+				if (i == 0 && st.st_mode & __S_ISVTX) printf("t"); // sticky bit
+				else if (st.st_mode & S_ISUID || st.st_mode & S_ISGID) printf("s"); // setuserid, setgroupid
+				else printf("x"); // no special bits
+			}
+			else printf("%c", "xwr"[i%3]); // permission
 			mode -= (1<<i);
 		}
-		else
-			printf("-"); // permission x
+		else {
+			if (i == 0 && st.st_mode & __S_ISVTX) printf("T"); // sticky bit
+			else if (i%3 == 0 && (st.st_mode & S_ISUID || st.st_mode & S_ISGID)) printf("S"); // setuserid, setgroupid
+			else printf("-"); // permission x
+		}
 	}
 
 	if (nlink == 0) printf(" %ld", st.st_nlink); // print the number of hard links
@@ -289,7 +325,7 @@ void print_node(char* path, char* name) {
 	else printf(" %-*s %-*s", nname, getpwuid(st.st_uid)->pw_name, ngroup, getgrgid(st.st_gid)->gr_name); // print the author and group name aligned version
 
 	if (hflag == 0)
-		printf("\t%5lu", st.st_size); // print the size of file
+		printf(" %5lu", st.st_size); // print the size of file
 	else {
 		size_t size = st.st_size;
 		if (size >> 10 == 0) printf(" %4ld", size); // size < 1024 -> just print
@@ -344,7 +380,7 @@ void print_node(char* path, char* name) {
 // Purpose: Print linked list										 //
 ///////////////////////////////////////////////////////////////////////
 
-void print_list(t_list **head, char *path) {
+void print_list(t_list **head) {
 	t_list *temp = (*head)->next; // point to first node of sorted list to print
 	size_t total = 0;
 	struct stat st;
@@ -352,25 +388,17 @@ void print_list(t_list **head, char *path) {
 
 	if (lflag > 0) { // count and print total size of dir
 		while (temp) {
-			if (path) { // make absolute path to get info
-				strcpy(full_path, path);
-				full_path[strlen(path)] = '/';
-				strcpy(full_path + strlen(path) + 1, temp->path);
+			st = temp->st;
+			total += st.st_blocks/2; // count total block size
+			if (nname < strlen(getpwuid(st.st_uid)->pw_name)) nname = strlen(getpwuid(st.st_uid)->pw_name); // set nname
+			if (ngroup < strlen(getgrgid(st.st_gid)->gr_name)) ngroup = strlen(getgrgid(st.st_gid)->gr_name); // set ngroup
+			int ntemp = st.st_nlink; 
+			int numlen = 1; // count length of nlink
+			while (ntemp) {
+				ntemp /= 10;
+				if (ntemp > 0) numlen++;
 			}
-			else // use relative path
-				strcpy(full_path, temp->path);
-			if (lstat(full_path, &st) == 0) {
-				total += st.st_blocks/2; // count total block size
-				if (nname < strlen(getpwuid(st.st_uid)->pw_name)) nname = strlen(getpwuid(st.st_uid)->pw_name); // set nname
-				if (ngroup < strlen(getgrgid(st.st_gid)->gr_name)) ngroup = strlen(getgrgid(st.st_gid)->gr_name); // set ngroup
-				int temp = st.st_nlink; 
-				int numlen = 1; // count length of nlink
-				while (temp) {
-					temp /= 10;
-					if (temp > 0) numlen++;
-				}
-				if (nlink < numlen) nlink = numlen; // set nlink
-			}
+			if (nlink < numlen) nlink = numlen; // set nlink
 			temp = temp->next;
 		}
 		if (hflag == 0)	printf("total %ld\n", total);  // print total size of dir
@@ -399,15 +427,9 @@ void print_list(t_list **head, char *path) {
 		temp = (*head)->next;
 	}
 	while (temp) { // print all the node
-		if (path) {
-			strcpy(full_path, path); // make absolute path to get info
-			full_path[strlen(path)] = '/';
-			strcpy(full_path + strlen(path) + 1, temp->path);
-		}
-		else // use relative path
-			strcpy(full_path, temp->path);
-		print_node(full_path, temp->path); // print each file
+		print_node(temp->fullpath, temp->path); // print each file
 		memset(full_path, '\0', 256); // reset full_path
 		temp = temp->next; 
 	}
+	nlink = 0; nname = 0; ngroup = 0; // reset nlink, nname, ngroup
 }
