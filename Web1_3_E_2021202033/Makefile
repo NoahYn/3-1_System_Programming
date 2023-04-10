@@ -12,7 +12,7 @@
 EXEC = spls_final
 CC = gcc
 SRCS = 2021202033_final_ls.c 
-FLGS = -g -Wall -Werror -Wextra # to detect warning and debug
+FLGS = -g -Wall -Werror -Wextra -fsanitize=address # to detect warning and debug
 
 all : $(EXEC)
 
