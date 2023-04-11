@@ -84,7 +84,7 @@ int main(int argc, char *argv[]) {
 		if (get_list(&head, dirp, cwd) == -1) return 0;	// make list of dirent
 		sort_list(&head); // sort list
 		
-		if (lflag > 0) printf("Directory path: %s\n", cwd);	// print path of current working directory
+		if (lflag > 0) printf("\nDirectory path: %s\n", cwd);	// print path of current working directory
 		print_list(&head); // print list of current working directory
 		
 		free_list(&head);
@@ -94,6 +94,7 @@ int main(int argc, char *argv[]) {
 	else  {	// open certain paths
 		t_list *curr = 0;
 		t_list *temp = 0;
+		int ls_cnt = 0; // count number of lists
 	
 		for (int i = 1; i < argc; i++) { // print error(first) and make list of files(second)
 			if (argv[i][0] == '-') continue; // pass option
@@ -127,9 +128,10 @@ int main(int argc, char *argv[]) {
 			sort_list(&head); // sort list of files 
 			print_list(&head); // print list of files
 			free_list(&head);
+			ls_cnt++;
 		}
 	
-		head = 0; 
+		head = 0; curr = 0;
 		for (int i = 1; i < argc; i++) {  // make list of directories(third)
 			if (argv[i][0] == '-') continue; // pass option
 			
@@ -145,6 +147,7 @@ int main(int argc, char *argv[]) {
 			temp->prev = curr; 
 			temp->next = 0;
 			strcpy(temp->path, argv[i]);
+			ls_cnt++;
 			closedir(dirp);
 		}
 
@@ -158,14 +161,12 @@ int main(int argc, char *argv[]) {
 		t_list* dir_head = 0; // head of each direcory list
 		while (curr) {
 			dirp = opendir(curr->path);
-			
 			if (get_list(&dir_head, dirp, curr->path) == -1) continue; // make list of dirent
 			sort_list(&dir_head); // sort list
 
-			if (lflag > 0)
-				printf("Directory path: %s\n", curr->path); // print Directory path
+			if (lflag > 0 || ls_cnt > 1)
+				printf("\nDirectory path: %s\n", curr->path); // print Directory path
 			print_list(&dir_head); // print list
-			if (curr->next) printf("\n"); // separate each list by newline
 
 			free_list(&dir_head);
 			dir_head = 0;
@@ -547,5 +548,5 @@ void print_list(t_list **head) {
 		memset(full_path, '\0', 256); // reset full_path
 		temp = temp->next; 
 	}
-	nlink = 0; nname = 0; ngroup = 0; // reset nlink, nname, ngroup
+	nlink = 0; nname = 0; ngroup = 0; nsize = 0; // reset nlink, nname, ngroup
 }
