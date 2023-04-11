@@ -23,13 +23,14 @@
 #include <fnmatch.h> // fnmatch
 
 typedef struct s_list {
-	char path[256]; // file name
+	char name[256]; // file name
 	char fullpath[256]; // absolute path to get stat
 	struct stat st; // file stat
 	struct s_list *next;
 	struct s_list *prev; // use when sorting
 } t_list;
 
+void fnmatch2argv(int *argc, char **argv[]);
 void free_list(t_list **head); 
 int get_list(t_list **head, DIR *dirp, char *path); 
 int strlscmp(char *s1, char *s2); // compare by giver order
@@ -84,7 +85,7 @@ int main(int argc, char *argv[]) {
 		if (get_list(&head, dirp, cwd) == -1) return 0;	// make list of dirent
 		sort_list(&head); // sort list
 		
-		if (lflag > 0) printf("\nDirectory path: %s\n", cwd);	// print path of current working directory
+		if (lflag > 0) printf("Directory path: %s\n", cwd);	// print path of current working directory
 		print_list(&head); // print list of current working directory
 		
 		free_list(&head);
@@ -95,10 +96,12 @@ int main(int argc, char *argv[]) {
 		t_list *curr = 0;
 		t_list *temp = 0;
 		int ls_cnt = 0; // count number of lists
+		int file_entry = 0;
 	
+		fnmatch2argv(&argc, &argv);
 		for (int i = 1; i < argc; i++) { // print error(first) and make list of files(second)
 			if (argv[i][0] == '-') continue; // pass option
-
+			
 			if ((dirp = opendir(argv[i])) == NULL) { // path is not directory
 				if (!(temp = (t_list*)malloc(sizeof(t_list)))) exit(1); // initialize temp
 				if (lstat(argv[i], &(temp->st)) == -1) { // path is not exist
@@ -106,7 +109,7 @@ int main(int argc, char *argv[]) {
 					free(temp);
 					continue;
 				}
-				strcpy(temp->path, argv[i]); 
+				strcpy(temp->name, argv[i]); 
 				strcpy(temp->fullpath, argv[i]);
 				temp->next = 0;
 
@@ -128,6 +131,7 @@ int main(int argc, char *argv[]) {
 			sort_list(&head); // sort list of files 
 			print_list(&head); // print list of files
 			free_list(&head);
+			file_entry = 1;
 			ls_cnt++;
 		}
 	
@@ -136,19 +140,19 @@ int main(int argc, char *argv[]) {
 			if (argv[i][0] == '-') continue; // pass option
 			
 			if ((dirp = opendir(argv[i])) == NULL) continue; // pass : flies and errors are already processed 
-			if (curr == 0) {
-				if (!(curr = (t_list*)malloc(sizeof(t_list)))) exit(1); // exception : bad allocation
-				head = curr;
+			if (head == 0) {
+				if (!(head = (t_list*)malloc(sizeof(t_list)))) exit(1); // exception : bad allocation
+				curr = head;
 			}
 			else
-				curr = temp;	
+				curr = temp;
 			if (!(temp = (t_list*)malloc(sizeof(t_list)))) exit(1); // exception : bad allocation
 			curr->next = temp; // link
 			temp->prev = curr; 
 			temp->next = 0;
-			strcpy(temp->path, argv[i]);
-			ls_cnt++;
+			strcpy(temp->name, argv[i]);
 			closedir(dirp);
+			ls_cnt++;
 		}
 
 		if (head == 0) return 0; // termination : directory isn't exist
@@ -160,23 +164,105 @@ int main(int argc, char *argv[]) {
 		curr = head->next; // node to traverse dir list
 		t_list* dir_head = 0; // head of each direcory list
 		while (curr) {
-			dirp = opendir(curr->path);
-			if (get_list(&dir_head, dirp, curr->path) == -1) continue; // make list of dirent
+			if (lflag > 0 || ls_cnt > 1) {
+				if (file_entry++)
+					printf("\nDirectory path: %s\n", curr->name); // print Directory path
+				else
+					printf("Directory path: %s\n", curr->name);
+			}
+			
+			dirp = opendir(curr->name);
+			if (get_list(&dir_head, dirp, curr->name) == -1) { // directory is empty
+				curr = curr->next; // go to next directory
+				continue;
+			}
 			sort_list(&dir_head); // sort list
-
-			if (lflag > 0 || ls_cnt > 1)
-				printf("\nDirectory path: %s\n", curr->path); // print Directory path
 			print_list(&dir_head); // print list
 
 			free_list(&dir_head);
-			dir_head = 0;
 			closedir(dirp);
+			dir_head = 0;
 			curr = curr->next;
 		}
 		free_list(&head);
 	}
 	return 0;
 }
+
+void fnmatch2argv(int *argc, char ***argv_src) {
+	DIR *dirp = 0; // directory stream
+	struct dirent *dir;
+	t_list *head = (t_list*)malloc(sizeof(t_list)); // list to store file path
+	t_list *curr = head; 
+	char **argv = *argv_src; // source of argv
+	char **argv_dst; // destination of argv
+	int path_len; // strlen of path
+	char *name; // name after path
+	int cnt = 0; // size of new argv
+	
+	for (int i = 1; i < *argc; i++) { // find wildcard and convert to argv
+		if (!fnmatch("*[?]*", argv[i], 0) || !fnmatch("*[*]*", argv[i], 0) || !fnmatch("*[[]*[]]*", argv[i], 0)) { // find wildcard (?, *, [seq])
+			name = strrchr(argv[i], '/'); 
+			if (name == 0) { // '/' is not founded
+				dirp = opendir(".");
+				while ((dir = readdir(dirp)) != NULL) { // read from dirent until all file is readed
+					if (dir->d_name[0] == '.') continue; // skip hidden file without aflag
+					if (!fnmatch(argv[i], dir->d_name, 0)) {
+						t_list *temp = (t_list*)malloc(sizeof(t_list));
+						strcpy(temp->name, dir->d_name);
+						temp->next = 0;
+						curr->next = temp;
+						curr = temp;
+						cnt++;
+					}
+				}
+				cnt--; // except argv[i]
+				closedir(dirp);
+			}
+			else {
+				path_len = (int)(++name - argv[i]);
+				strncpy(head->name, argv[i], path_len);
+				dirp = opendir(head->name);
+				while ((dir = readdir(dirp)) != NULL) { // read from dirent until all file is readed
+					if (dir->d_name[0] == '.') continue; // skip hidden file without aflag
+					if (!fnmatch(name, dir->d_name, 0)) {
+						t_list *temp = (t_list*)malloc(sizeof(t_list));
+						strcpy(temp->name, head->name);
+						strcpy(temp->name + strlen(head->name), dir->d_name);
+						temp->next = 0;
+						curr->next = temp;
+						curr = temp;
+						cnt++;
+					}
+				}
+				cnt--; // except argv[i]
+				closedir(dirp);
+			}
+		}
+		else {
+			t_list *temp = (t_list*)malloc(sizeof(t_list));
+			strcpy(temp->name, argv[i]);
+			strcpy(temp->fullpath, argv[i]);
+			temp->next = 0;
+			curr->next = temp;
+			curr = temp;
+		}
+	}
+
+	*argc += cnt;
+	argv_dst = (char **)malloc(sizeof(char *) * (*argc + 1));
+	curr = head->next;
+	int i = 1;
+	while (curr) {
+		argv_dst[i] = (char *)malloc(sizeof(char) * (strlen(curr->name) + 1));
+		strcpy(argv_dst[i], curr->name);
+		curr = curr->next;
+		i++;
+	}
+	argv_dst[i] = 0;
+	*argv_src = argv_dst;
+}
+
 
 ///////////////////////////////////////////////////////////////////////
 // free_list														 //
@@ -224,10 +310,10 @@ int get_list(t_list **list, DIR *dirp, char *path) {
 		head->next = temp; // link
 		temp->prev = head;
 
-		strcpy(temp->path, dir->d_name); // get file name
+		strcpy(temp->name, dir->d_name); // get file name
 		strcpy(temp->fullpath, path); // make absolute path to get stat
 		temp->fullpath[strlen(path)] = '/';
-		strcpy(temp->fullpath + strlen(path) + 1, temp->path);
+		strcpy(temp->fullpath + strlen(path) + 1, temp->name);
 		
 		lstat(temp->fullpath, &temp->st); // get stat
 		temp->next = 0;
@@ -308,7 +394,7 @@ void sort_list(t_list **head) {
 		temp = (*head)->next; // point to first component
 		if (temp) { // setting for comparing
 			if (sflag > 0) min_size = temp->st.st_size;
-			min_path= temp->path;
+			min_path= temp->name;
 			s_min = temp;
 		}
 		while (temp) {
@@ -317,12 +403,12 @@ void sort_list(t_list **head) {
 					if (rflag > 0) { // rflag
 						if (min_size > temp->next->st.st_size) { // select when next size is smaller
 							min_size = temp->next->st.st_size; // get next size
-							min_path = temp->next->path; // get next path
+							min_path = temp->next->name; // get next path
 							s_min = temp->next; // get next node
 						}
 						else if (min_size == temp->next->st.st_size) { // if file size is same -> sort by file name
-							if (strlscmp(min_path, temp->next->path) < 0) { // select when next name is bigger
-								min_path = temp->next->path; // max_path
+							if (strlscmp(min_path, temp->next->name) < 0) { // select when next name is bigger
+								min_path = temp->next->name; // max_path
 								s_min = temp->next; // s_max
 							}
 						}
@@ -330,12 +416,12 @@ void sort_list(t_list **head) {
 					else { // rflag == 0
 						if (min_size < temp->next->st.st_size) { // select when next size is bigger
 							min_size = temp->next->st.st_size; // max_size
-							min_path = temp->next->path; // max_path
+							min_path = temp->next->name; // max_path
 							s_min = temp->next; // s_max
 						}
 						else if (min_size == temp->next->st.st_size) { // if file size is same -> sort by file name
-							if (strlscmp(min_path, temp->next->path) > 0) { // select when next name is smaller
-								min_path = temp->next->path; // min_path
+							if (strlscmp(min_path, temp->next->name) > 0) { // select when next name is smaller
+								min_path = temp->next->name; // min_path
 								s_min = temp->next; // s_min
 							}
 						}
@@ -343,15 +429,15 @@ void sort_list(t_list **head) {
 				}
 				else { // sflag == 0, default
 					if (rflag > 0) { // rflag  
-						if (strlscmp(min_path, temp->next->path) < 0) { // select when next name is bigger
-							min_path = temp->next->path; // max_path
+						if (strlscmp(min_path, temp->next->name) < 0) { // select when next name is bigger
+							min_path = temp->next->name; // max_path
 							s_min = temp->next; // s_max
 						}
 						
 					}
 					else { // rflag == 0, default
-						if (strlscmp(min_path, temp->next->path) > 0) { // select when next name is smaller
-							min_path= temp->next->path; // min_path
+						if (strlscmp(min_path, temp->next->name) > 0) { // select when next name is smaller
+							min_path= temp->next->name; // min_path
 							s_min = temp->next; // s_min
 						}
 					}
@@ -544,7 +630,7 @@ void print_list(t_list **head) {
 		temp = (*head)->next; // rewind temp
 	}
 	while (temp) { // print all the node
-		print_node(temp->fullpath, temp->path); // print each file
+		print_node(temp->fullpath, temp->name); // print each file
 		memset(full_path, '\0', 256); // reset full_path
 		temp = temp->next; 
 	}
