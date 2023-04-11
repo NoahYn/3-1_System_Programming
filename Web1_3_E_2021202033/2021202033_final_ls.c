@@ -10,7 +10,7 @@
 ///////////////////////////////////////////////////////////////////////
 
 #include <stdio.h> // for printf
-#include <stdlib.h> // for malloc
+#include <stdlib.h> // for malloc, free
 #include <dirent.h> // for opendir, readdir, closedir
 #include <ctype.h> // for toupper
 #include <string.h> // for strlen
@@ -20,7 +20,8 @@
 #include <pwd.h> // for pwduid
 #include <grp.h> // for groupgid
 #include <time.h> // time
-#include <fnmatch.h> // fnmatching
+#include <fnmatch.h> // fnmatch
+
 typedef struct s_list {
 	char path[256]; // file name
 	char fullpath[256]; // absolute path to get stat
@@ -29,9 +30,9 @@ typedef struct s_list {
 	struct s_list *prev; // use when sorting
 } t_list;
 
-void free_list(t_list **head);
-int get_list(t_list **head, DIR *dirp, char *path);
-int strlscmp(char *s1, char *s2);
+void free_list(t_list **head); 
+int get_list(t_list **head, DIR *dirp, char *path); 
+int strlscmp(char *s1, char *s2); // compare by giver order
 void sort_list(t_list **head);
 void print_node(char* path, char *name);
 void print_list(t_list **head);
@@ -70,7 +71,7 @@ int main(int argc, char *argv[]) {
 				sflag++;
 				break;
 			case '?': // other undefined options
-				fprintf(stderr, "%s: invalid option.\n", argv[0]+2);
+				fprintf(stderr, "%s: invalid option.\n", argv[0]+2); 
 				return 0;
 		}
 	}
@@ -79,56 +80,60 @@ int main(int argc, char *argv[]) {
 		char cwd[256]; // buffer of current working directory 
 		getcwd(cwd, 256); // get current working directory
 		dirp = opendir(".");
-		if (get_list(&head, dirp, cwd) == -1) // make list of dirent
-			return 0;
+
+		if (get_list(&head, dirp, cwd) == -1) return 0;	// make list of dirent
 		sort_list(&head); // sort list
+		
 		if (lflag > 0) printf("Directory path: %s\n", cwd);	// print path of current working directory
-		print_list(&head); // print list
+		print_list(&head); // print list of current working directory
+		
 		free_list(&head);
 		closedir(dirp);
 	}
+
 	else  {	// open certain paths
 		t_list *curr = 0;
 		t_list *temp = 0;
-		for (int i = 1; i < argc; i++) { // print error and files
+	
+		for (int i = 1; i < argc; i++) { // print error(first) and make list of files(second)
 			if (argv[i][0] == '-') continue; // pass option
 
-			dirp = opendir(argv[i]);
-			if (dirp == NULL) { // path is not dir 
-				if (!(temp = (t_list*)malloc(sizeof(t_list)))) exit(1);
+			if ((dirp = opendir(argv[i])) == NULL) { // path is not directory
+				if (!(temp = (t_list*)malloc(sizeof(t_list)))) exit(1); // initialize temp
 				if (lstat(argv[i], &(temp->st)) == -1) { // path is not exist
-					fprintf(stderr, "cannot access '%s': No such file or directory\n", argv[i]); // print error : path is not exist
+					fprintf(stderr, "cannot access '%s': No such file or directory\n", argv[i]); // error : path is not exist
 					free(temp);
 					continue;
 				}
-				strcpy(temp->path, argv[i]);
+				strcpy(temp->path, argv[i]); 
 				strcpy(temp->fullpath, argv[i]);
 				temp->next = 0;
 
 				if (head == 0) {	
 					if (!(head = (t_list*)malloc(sizeof(t_list)))) exit(1); // exception : bad allocation
-					head->next = temp;
+					head->next = temp; // link to head
 					temp->prev = head;
 				}
 				else {
-					curr->next = temp;
+					curr->next = temp; // link so on
 					temp->prev = curr;
 				}
 				curr = temp;
 			}
 			closedir(dirp);
 		}
-		if (head != 0) {
+
+		if (head != 0) { // list is successfully created 
 			sort_list(&head); // sort list of files 
 			print_list(&head); // print list of files
 			free_list(&head);
 		}
 	
-		head = 0;	
-		for (int i = 1; i < argc; i++) {  // print dirs
+		head = 0; 
+		for (int i = 1; i < argc; i++) {  // make list of directories(third)
 			if (argv[i][0] == '-') continue; // pass option
-			dirp = opendir(argv[i]);
-			if (dirp == NULL) continue; // pass : flies and errors are already processed 
+			
+			if ((dirp = opendir(argv[i])) == NULL) continue; // pass : flies and errors are already processed 
 			if (curr == 0) {
 				if (!(curr = (t_list*)malloc(sizeof(t_list)))) exit(1); // exception : bad allocation
 				head = curr;
@@ -136,33 +141,35 @@ int main(int argc, char *argv[]) {
 			else
 				curr = temp;	
 			if (!(temp = (t_list*)malloc(sizeof(t_list)))) exit(1); // exception : bad allocation
-			curr->next = temp;
-			temp->prev = curr;
+			curr->next = temp; // link
+			temp->prev = curr; 
 			temp->next = 0;
 			strcpy(temp->path, argv[i]);
-			strcpy(temp->fullpath, argv[i]);
 			closedir(dirp);
 		}
 
-		if (head == 0) return 0;
+		if (head == 0) return 0; // termination : directory isn't exist
+
 		sflag *= -1; rflag *= -1; // dir should be sorted by name
 		sort_list(&head); // sort dirs
-		sflag *= -1; rflag *= -1;
+		sflag *= -1; rflag *= -1; 
 
 		curr = head->next; // node to traverse dir list
-		t_list* dir_head = 0;
+		t_list* dir_head = 0; // head of each direcory list
 		while (curr) {
 			dirp = opendir(curr->path);
-			if (get_list(&dir_head, dirp, curr->path) == -1) // make list of dirent
-				continue;
+			
+			if (get_list(&dir_head, dirp, curr->path) == -1) continue; // make list of dirent
 			sort_list(&dir_head); // sort list
+
 			if (lflag > 0)
 				printf("Directory path: %s\n", curr->path); // print Directory path
 			print_list(&dir_head); // print list
+			if (curr->next) printf("\n"); // separate each list by newline
+
 			free_list(&dir_head);
 			dir_head = 0;
 			closedir(dirp);
-			if (curr->next) printf("\n"); // separate each list by newline
 			curr = curr->next;
 		}
 		free_list(&head);
@@ -179,12 +186,13 @@ int main(int argc, char *argv[]) {
 ///////////////////////////////////////////////////////////////////////
 
 void free_list(t_list **head) {
-	t_list *curr = *head;
 	t_list *temp;
+	t_list *curr = *head; // node to traverse list 
+
 	while (curr) {
-		temp = curr->next;
-		free(curr);
-		curr = temp;
+		temp = curr->next;  
+		free(curr);  
+		curr = temp; 
 	}
 }
 
@@ -206,17 +214,13 @@ int get_list(t_list **list, DIR *dirp, char *path) {
 	while ((dir = readdir(dirp)) != NULL) { // read from dirent until all file is readed
 		if (!aflag && dir->d_name[0] == '.') continue; // skip hidden file without aflag
 		if (head == 0) { // initialize head
-			head = (t_list *)malloc(sizeof(t_list));
-			if (!head) // exception : bad allocation
-				exit(1);
+			if (!(head = (t_list *)malloc(sizeof(t_list)))) exit(1); // exception : bad allocation
 			*list = head;
 		}
 		else
 			head = temp;
-		temp = (t_list *)malloc(sizeof(t_list)); // initialize temp
-		if (!temp) // exception : bad allocation
-			exit(1);
-		head->next = temp;
+		if (!(temp = (t_list *)malloc(sizeof(t_list)))) exit(1); // initialize temp
+		head->next = temp; // link
 		temp->prev = head;
 
 		strcpy(temp->path, dir->d_name); // get file name
@@ -227,8 +231,8 @@ int get_list(t_list **list, DIR *dirp, char *path) {
 		lstat(temp->fullpath, &temp->st); // get stat
 		temp->next = 0;
 	}
-	if (head == 0)
-		return -1;
+	if (head == 0) // there's nothing to make list
+		return -1; 
 	else
 		return 0;
 }
@@ -242,8 +246,8 @@ int get_list(t_list **list, DIR *dirp, char *path) {
 ///////////////////////////////////////////////////////////////////////
 
 int strlscmp(char *s1, char *s2) {
-	int i1 = 0;
-	int i2 = 0;
+	int i1 = 0; // index of s1
+	int i2 = 0; // index of s2
 
 	if (s1[i1] == '.') i1 += 1; // skip : '.' is just flag of hidden file
 	if (s2[i2] == '.') i2 += 1;
@@ -258,7 +262,7 @@ int strlscmp(char *s1, char *s2) {
 			return ((unsigned char)toupper(s1[i1]) - (unsigned char)toupper(s2[i2])); // compare with toupper
 		i1++; i2++;
 	}
-	if (s1[i1] || s2[i2]) return ((unsigned char)s1[i1] - (unsigned char)s2[i2]); // length is different
+	if (s1[i1] || s2[i2]) return ((unsigned char)s1[i1] - (unsigned char)s2[i2]); // two lengths are different
 	
 	// s1 and s2 are identical with toupper (using alphabet order)
 	// we should compare without toupper(ex. ABCD and abcd -> ABCD first)
@@ -359,8 +363,8 @@ void sort_list(t_list **head) {
 		if (s_min->next)
 			s_min->next->prev = s_min->prev;
 		s_min->next = 0; // reinitialize for sorted list 
-		s_min->prev = s_temp;
-		s_temp->next = s_min;
+		s_min->prev = s_temp; 
+		s_temp->next = s_min; // link to sorted list
 		s_temp = s_min;
 	} while(size > 1); // finish when all the node in list move to sorted list
 	*head = sorted;
@@ -386,10 +390,10 @@ void print_node(char* path, char* name) {
 	}
 
 	// print the file information (-l option)
-	int mode;
-	struct tm *tm;
+	int mode; // file type and permission
+	struct tm *tm; // time
 	const char *month[12] = {"Jan", "Fab", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}; // month array
-	int xflag = 0;
+	int xflag = 0; // flag whether the file is executable file or not
 
 	mode = st.st_mode; // print file format
 	if (S_ISREG(mode))	// regular file
@@ -412,17 +416,17 @@ void print_node(char* path, char* name) {
 		if (mode>>i == 1) { // check bit by bit
 			if (i%3 == 0) {
 				xflag++;
-				if (i == 0 && st.st_mode & __S_ISVTX) printf("t"); // sticky bit
-				else if (st.st_mode & S_ISUID || st.st_mode & S_ISGID) printf("s"); // setuserid, setgroupid
-				else printf("x"); // no special bits
+				if (i == 0 && st.st_mode & __S_ISVTX) printf("t"); // sticky bit -> t
+				else if (st.st_mode & S_ISUID || st.st_mode & S_ISGID) printf("s"); // setuserid, setgroupid -> s
+				else printf("x"); // no special bits -> x
 			}
-			else printf("%c", "xwr"[i%3]); // permission
-			mode -= (1<<i);
+			else printf("%c", "xwr"[i%3]); // permission -> r,w,x
+			mode -= (1<<i); // get next bit
 		}
 		else {
-			if (i == 0 && st.st_mode & __S_ISVTX) printf("T"); // sticky bit
-			else if (i%3 == 0 && (st.st_mode & S_ISUID || st.st_mode & S_ISGID)) printf("S"); // setuserid, setgroupid
-			else printf("-"); // permission x
+			if (i == 0 && st.st_mode & __S_ISVTX) printf("T"); // sticky bit -> T(no execute permission + t = T)
+			else if (i%3 == 0 && (st.st_mode & S_ISUID || st.st_mode & S_ISGID)) printf("S"); // setuserid, setgroupid -> S(no execution permission)
+			else printf("-"); // no permission
 		}
 	}
 
@@ -436,12 +440,12 @@ void print_node(char* path, char* name) {
 		if (nsize == 0) printf(" %5lu", st.st_size); // print the size of file
 		else printf(" %*lu", nsize, st.st_size); // print the size of file aligned version
 	}
-	else {
+	else { // print size as human readable form
 		size_t size = st.st_size;
 		if (size >> 10 == 0) printf(" %4ld", size); // size < 1024 -> just print
 		else { // size >= 1024 -> parsing
 			int i;
-			for (i = 0; i < 5; i++) { // one loop moves one prefix
+			for (i = 0; i < 5; i++) { // next unit
 				float temp = (float)size / 1024; 
 				if (temp < 10) { // print as n.n form
 					temp *= 10; 
@@ -454,26 +458,25 @@ void print_node(char* path, char* name) {
 					printf(" %3d%c", (int)temp, "KMGTP"[i]); // print nx
 					break;
 				}
-				else 
-					size /= 1024; // next prefix
+				else size /= 1024; // next prefix
 			}
 		}
 	}
 
-	time_t now = time(0);
-	int this_year = localtime(&now)->tm_year;
-	tm = localtime(&(st.st_mtime));
-	printf(" %s %2d", month[tm->tm_mon], tm->tm_mday); // print the access time in certain format
-	if (tm->tm_year != this_year) printf("  %d", tm->tm_year + 1900);
-	else printf(" %02d:%02d", tm->tm_hour, tm->tm_min); 
+	time_t now = time(0); // now
+	int this_year = localtime(&now)->tm_year; // this_year
+	tm = localtime(&(st.st_mtime)); // time when the file modified
+	printf(" %s %2d", month[tm->tm_mon], tm->tm_mday); // print the time in certain format
+	if (tm->tm_year != this_year) printf("  %d", tm->tm_year + 1900); // print year instead of hour when the file is modified not this year
+	else printf(" %02d:%02d", tm->tm_hour, tm->tm_min); // print the time(hour : minute)
 
 	if (S_ISLNK(st.st_mode)) { // symbolic link file
 		printf(" \033[96m\033[1m%s\033[0m ->", name); // set color as bold bright cyan and reset (can see in man console_codes(4))
 		memset(name, 0, 255);
 		readlink(path, name, 255); // get the name linked by symlink
+		if (stat(name, &st) == -1) return; // get stat of file linked by symlink
 		xflag = 0;
-		if (stat(name, &st) == -1) return; // exception : path is not exist
-		if ((st.st_mode & S_IXUSR) || (st.st_mode & S_IXGRP) || (st.st_mode & S_IXOTH)) xflag++; // if the file is execute file
+		if ((st.st_mode & S_IXUSR) || (st.st_mode & S_IXGRP) || (st.st_mode & S_IXOTH)) xflag++; // if the file is execute file(for color)
 	}
 	if (S_ISDIR(st.st_mode)) printf(" \033[34m\033[1m%s\033[0m\n", name); // print the dir name(bold blue)
 	else if (S_ISCHR(st.st_mode) || S_ISBLK(st.st_mode)) printf(" \033[33m\033[1m%s\033[0m\n", name); // print the charcter/block special file name(bold brown(yellow))
@@ -493,9 +496,9 @@ void print_node(char* path, char* name) {
 
 void print_list(t_list **head) {
 	t_list *temp = (*head)->next; // point to first node of sorted list to print
-	size_t total = 0;
-	struct stat st;
-	char full_path[256];
+	size_t total = 0; // total block size of directory
+	struct stat st; // stat
+	char full_path[256]; // absolute path to get stat
 
 	if (lflag > 0) { // count and print total size of dir
 		while (temp) {
@@ -503,16 +506,17 @@ void print_list(t_list **head) {
 			total += st.st_blocks/2; // count total block size
 			if ((size_t)nname < strlen(getpwuid(st.st_uid)->pw_name)) nname = strlen(getpwuid(st.st_uid)->pw_name); // set nname
 			if ((size_t)ngroup < strlen(getgrgid(st.st_gid)->gr_name)) ngroup = strlen(getgrgid(st.st_gid)->gr_name); // set ngroup
-			int ntemp = st.st_nlink; 
-			int numlen = 1; // count length of nlink
-			while (ntemp) if ((ntemp /= 10) > 0) numlen++;
-			if (nlink < numlen) nlink = numlen; // set nlink
-			ntemp = st.st_size;
+			int ntemp = st.st_nlink; // temp nlink 
+			int numlen = 1; 
+			while (ntemp) if ((ntemp /= 10) > 0) numlen++; // count length of nlink
+			if (nlink < numlen) nlink = numlen; // get max nlink 
+			ntemp = st.st_size; // temp nsize
 			numlen = 1;
-			while (ntemp) if ((ntemp /= 10) > 0) numlen++;
-			if (nsize < numlen) nsize = numlen;
+			while (ntemp) if ((ntemp /= 10) > 0) numlen++; // count length of nsize
+			if (nsize < numlen) nsize = numlen; // get max nsize
 			temp = temp->next;
 		}
+
 		if (hflag == 0)	printf("total %ld\n", total);  // print total size of dir
 		else { // hflag
 			if (total >> 10 == 0) printf("total %ldK\n", total); // size < 1024 -> just print with K
@@ -531,12 +535,12 @@ void print_list(t_list **head) {
 						printf("total %3d%c\n", (int)temp, "MGTP"[i]); // print nx
 						break;
 					}
-					else 
-						total /= 1024; // next prefix
+					else total /= 1024; // next prefix
 				}
 			}
 		}
-		temp = (*head)->next;
+
+		temp = (*head)->next; // rewind temp
 	}
 	while (temp) { // print all the node
 		print_node(temp->fullpath, temp->path); // print each file
