@@ -189,6 +189,16 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 
+///////////////////////////////////////////////////////////////////////
+// fnmatch2argv														 //
+// ================================================================= //
+// Input: int *argc -> number of argument							 //
+// 		  char ***argv_src -> argument values						 //
+// Output: void														 //
+// Purpose: find files matched with wildcard						 // 
+// 				then update argc and argv 							 //
+///////////////////////////////////////////////////////////////////////
+
 void fnmatch2argv(int *argc, char ***argv_src) {
 	DIR *dirp = 0; // directory stream
 	struct dirent *dir;
@@ -262,7 +272,6 @@ void fnmatch2argv(int *argc, char ***argv_src) {
 	argv_dst[i] = 0;
 	*argv_src = argv_dst;
 }
-
 
 ///////////////////////////////////////////////////////////////////////
 // free_list														 //
