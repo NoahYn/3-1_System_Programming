@@ -1,12 +1,12 @@
 ///////////////////////////////////////////////////////////////////////
-// File Name : 2021202033_spls_advanced.c							 //
-// Date : 2023/04/02	 											 //
+// File Name : 2021202033_final_ls.c								 //
+// Date : 2023/04/11	 											 //
 // Os : Ubuntu 16.04 LTS 64bits 									 //
 // Author : Sung Min Yoon 									 	 	 //
 // Student ID : 2021202033											 //
 // ----------------------------------------------------------------- //
-// Title : System Programming Assignment #1-2						 //
-// Description : This file is source code for Assignment #1-2		 //
+// Title : System Programming Assignment #1-3						 //
+// Description : This file is source code for Assignment #1-3		 //
 ///////////////////////////////////////////////////////////////////////
 
 #include <stdio.h> // for printf
@@ -30,13 +30,13 @@ typedef struct s_list {
 	struct s_list *prev; // use when sorting
 } t_list;
 
-void fnmatch2argv(int *argc, char **argv[]);
-void free_list(t_list **head); 
-int get_list(t_list **head, DIR *dirp, char *path); 
-int strlscmp(char *s1, char *s2); // compare by giver order
-void sort_list(t_list **head);
-void print_node(char* path, char *name);
-void print_list(t_list **head);
+void fnmatch2argv(int *argc, char **argv[]); // convert wild card to names matched
+void free_list(t_list **head); // free list
+int get_list(t_list **head, DIR *dirp, char *path); // make list
+int strlscmp(char *s1, char *s2); // compare by the order given by assignment
+void sort_list(t_list **head); // sort list
+void print_node(char* path, char *name); // print each file
+void print_list(t_list **head); // print list
 
 static int aflag = 0; // -a option
 static int lflag = 0; // -l option
