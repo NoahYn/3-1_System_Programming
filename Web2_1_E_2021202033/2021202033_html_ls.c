@@ -645,5 +645,5 @@ void print_list(t_list **head) {
 		memset(full_path, '\0', 256); // reset full_path
 		temp = temp->next; 
 	}
-	fprintf(file, "</table>");
+	fprintf(file, "</table><br/>");
 }
