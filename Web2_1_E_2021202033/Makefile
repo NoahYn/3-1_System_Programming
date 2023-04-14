@@ -1,12 +1,12 @@
 #######################################################################
 ## File Name : Makefile									 		  	 ##
-## Date : 2023/04/11 												 ##
+## Date : 2023/04/14 												 ##
 ## Os : Ubuntu 16.04 LTS 64bits 									 ##
 ## Author : Sung Min Yoon									 		 ##
 ## Student ID : 2021202033 											 ##
 ## ----------------------------------------------------------------- ##
-## Title : System Programming Assignment #1-3 				 		 ##
-## Description : this file is Makefile for the Assignment #1-3 		 ##
+## Title : System Programming Assignment #2-1				 		 ##
+## Description : this file is Makefile for the Assignment #2-1 		 ##
 #######################################################################
 
 EXEC = html_ls
