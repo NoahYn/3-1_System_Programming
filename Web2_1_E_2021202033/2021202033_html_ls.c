@@ -223,7 +223,7 @@ void fnmatch2argv(int *argc, char ***argv_src) {
 			if (name == 0) { // '/' is not founded
 				dirp = opendir(".");
 				while ((dir = readdir(dirp)) != NULL) { // read from dirent until all file is readed
-					if (dir->d_name[0] == '.') continue; // skip hidden file without aflag
+					if (!aflag && dir->d_name[0] == '.') continue; // skip hidden file without aflag
 					if (!fnmatch(argv[i], dir->d_name, 0)) {
 						t_list *temp = (t_list*)malloc(sizeof(t_list)); // initialize temp
 						strcpy(temp->name, dir->d_name);
@@ -241,7 +241,7 @@ void fnmatch2argv(int *argc, char ***argv_src) {
 				strncpy(head->name, argv[i], path_len);
 				dirp = opendir(head->name); // open dir by the string before last '/'
 				while ((dir = readdir(dirp)) != NULL) { // read from dirent until all file is readed
-					if (dir->d_name[0] == '.') continue; // skip hidden file without aflag
+					if (!aflag && dir->d_name[0] == '.') continue; // skip hidden file without aflag
 					if (!fnmatch(name, dir->d_name, 0)) {
 						t_list *temp = (t_list*)malloc(sizeof(t_list)); // initialize temp
 						strcpy(temp->name, head->name);
