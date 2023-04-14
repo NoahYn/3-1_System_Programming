@@ -487,6 +487,7 @@ void print_node(char* path, char* name) {
 	if (lstat(path, &st) == -1) { // exception : path is not exist
 		return;
 	}
+	if (strstr(path, "html_ls.html")) return ; // pass html_ls.html
 	if (lflag == 0) { // print the file name
 		fprintf(file, "<tr><td> <a href=\"%s\">%s</a> </td></tr>", name, name); // print name with hyperlink repo
 		return ;
