@@ -96,7 +96,8 @@ int main(int argc, char *argv[]) {
 		if (get_list(&head, dirp, cwd) == -1) return 0;	// make list of dirent
 		sort_list(&head); // sort list
 	
-		fprintf(file, "<b><br/>Directory path : .<br/></b>"); // print Dir path
+		if (lflag)
+			fprintf(file, "<b><br/>Directory path : .<br/></b>"); // print Dir path
 		print_list(&head); // print list of current working directory
 		
 		free_list(&head); // free
