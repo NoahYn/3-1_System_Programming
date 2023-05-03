@@ -17,6 +17,7 @@
 #include <stdlib.h> // for malloc, free
 #include <sys/types.h>
 #include <sys/socket.h> // for socket
+#include <sys/sendfile.h>
 #include <netinet/in.h>
 #include <arpa/inet.h> 
 #include <unistd.h> // for option
@@ -50,7 +51,8 @@ void print_list(t_list **head); // print list
 
 static int aflag = 0; // -a option
 static int cli_sd;
-static char response_message[BUFSIZE*BUFSIZE] = {0,};
+static unsigned int cwd_len = 0;
+static char response_message[BUFSIZE*BUFSIZE*BUFSIZE] = {0,};
 static char content_type[20] = {0,};
 
 int main() {
@@ -75,11 +77,14 @@ int main() {
 		exit(1);
 	}
 
-	listen(sd, 10);
+	listen(sd, 1000);
 	while (1) {
 		struct in_addr inet_cli_addr;
 		char buf[BUFSIZE] = {0,};
 		char url[URL_LEN] = {0,};
+		char cwd[URL_LEN] = {0,}; // buffer of current working directory 
+		getcwd(cwd, URL_LEN); // get current working directory
+		cwd_len = strlen(cwd);
 		char response_header[BUFSIZE] = {0,};
 		char method[20] = {0,};
 		char *tok = NULL;
@@ -106,60 +111,55 @@ int main() {
 			tok = strtok(0, " ");
 			if (strstr(tok, "favicon.ico")) continue;
 			strcpy(url, tok);
-			if (strcmp(url, "/") == 0)
+			if (strcmp(url, "/") == 0) {
 				aflag = 0;
-			else 
+			}
+			else {
 				aflag = 1;
+			}
+			strcat(cwd, url);
 		}
 
 		t_list *head = 0; // head of list
 		DIR *dirp;
-		if ((dirp = opendir(url)) == NULL) { // not dir
+		int fd = 0;
+
+		if ((dirp = opendir(cwd)) == NULL) { // not dir
 			t_list *temp = 0;
 			if (!(temp = (t_list*)malloc(sizeof(t_list)))) exit(1); // initialize temp
-			if (lstat(url, &(temp->st)) == -1) { // 404 not found
+			if (lstat(cwd, &(temp->st)) == -1) { // 404 not found
 				status = 404;
 				sprintf(response_message,
 					"<h1>Not Found</h1>"
 					"The request URL %s was not found on this server<br/>"
-					"HTTP %d - Not Page Found", url, status);
+					"HTTP %d - Not Page Found", cwd, status);
 			}
 			else { // file
-				FILE *fs;
-				if (fnmatch("*.jpg", url, FNM_CASEFOLD) == 0 || fnmatch("*.jpeg", url, FNM_CASEFOLD) == 0 || fnmatch("*.png", url, FNM_CASEFOLD) == 0) {
+				int fd = open(cwd, O_RDONLY);
+				if (fnmatch("*.jpeg", cwd, FNM_CASEFOLD) == 0 || fnmatch("*.jpg", cwd, FNM_CASEFOLD) == 0 || fnmatch("*.png", cwd, FNM_CASEFOLD) == 0) 
 					strcpy(content_type, "image/*");
-					printf("image!\n");
-					fs = fopen(url, "rb");
-				}
-				else if (temp->st.st_mode && (S_IXUSR || S_IXGRP || S_IXOTH)) {
-					fs = fopen(url, "rb");
-				}
+			//	else if (temp->st.st_mode & (S_IXUSR || S_IXGRP || S_IXOTH)) 
+			//		strcpy(content_type, "text/plain");				
 				else {
-					strcpy(content_type, "text/plain\0");
-					fs = fopen(url, "r");
-				}
-				
-				while(!feof(fs)) {
-					char file[BUFSIZE];
-					fgets(file, BUFSIZE, fs);
-					strcat(response_message, file);
-				}
-				fclose(fs);
+					strcpy(content_type, "text/plain");
+				} 
+				read(fd, response_message, BUFSIZE * BUFSIZE);
+				close(fd);
 			}
 			free(temp);
 		}
 		else {
 			strcpy(content_type, "text/html");
-			if (get_list(&head, dirp, url) == -1) return 0;	// make list of dirent
+			if (get_list(&head, dirp, cwd) == -1) return 0;	// make list of dirent
 			if (aflag == 0) {
 				sprintf(response_message, 
 					"<h1>Welcome to System Programming Http</h1>"
-					"<b>Directory path : %s <br/></b> ", url);
+					"<b>Directory path : %s <br/></b> ", cwd);
 			}
 			else {
 				sprintf(response_message, 
 					"<h1>System Programming Http</h1>"
-					"<b>Directory path : %s <br/></b> ", url);			
+					"<b>Directory path : %s <br/></b> ", cwd);			
 			}
 			sort_list(&head); // sort list
 			print_list(&head); // print list of current working directory
@@ -168,13 +168,13 @@ int main() {
 		closedir(dirp); // close
 
 		sprintf(response_header,
-			"HTTP/1.0 %d OK\r\n"
+			"HTTP/1.1 %d OK\r\n"
 			"Server:2023 simple web server\r\n"
 			"Content-length:%lu\r\n"
-			"Content-type:%s\r\n\r\n", status, strlen(response_message), content_type);
+			"Content-type: %s\r\n\r\n", status, strlen(response_message), content_type);
 
 		write(cli_sd, response_header, strlen(response_header));
-		write(cli_sd, response_message, strlen(response_message));
+		write(cli_sd, response_message, strlen(response_message));	
 		memset(response_message, 0, sizeof(response_message));
 		printf("[%s : %d] client was disconnected\n", inet_ntoa(inet_cli_addr), cli_addr.sin_port);
 
@@ -365,13 +365,8 @@ void print_node(char* path, char* name) {
 	else sprintf(buf, "<tr style=\"color:red\""); // red
 	strcat(response_message, buf);
 
-
-
-	sprintf(buf, "<tr><td> <a href=\"%s\">%s</a> </td>", path, name);
+	sprintf(buf, "<tr><td> <a href=\"%s\">%s</a> </td>", path+cwd_len, name);
 	strcat(response_message, buf);
-
-
-
 
 	mode = st.st_mode; // print file format
 	if (S_ISREG(mode))	// regular file
