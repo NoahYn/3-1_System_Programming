@@ -9,9 +9,9 @@
 ## Description : this file is Makefile for the Assignment #2-1 		 ##
 #######################################################################
 
-EXEC = html_ls
+EXEC = web_server
 CC = gcc
-SRCS = 2021202033_html_ls.c 
+SRCS = 2021202033_web_server.c 
 FLGS = -g -Wall -Werror -Wextra -fsanitize=address # to detect warning and debug
 
 all : $(EXEC)

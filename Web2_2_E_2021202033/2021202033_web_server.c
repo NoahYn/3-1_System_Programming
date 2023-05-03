@@ -1,12 +1,12 @@
 ///////////////////////////////////////////////////////////////////////
-// File Name : 2021202033_html_ls.c								 	 //
-// Date : 2023/04/14	 											 //
+// File Name : 2021202033_web_server.c							 	 //
+// Date : 2023/05/03	 											 //
 // Os : Ubuntu 16.04 LTS 64bits 									 //
 // Author : Sung Min Yoon 									 	 	 //
 // Student ID : 2021202033											 //
 // ----------------------------------------------------------------- //
-// Title : System Programming Assignment #2-1						 //
-// Description : This file is source code for Assignment #2-1		 //
+// Title : System Programming Assignment #2-2						 //
+// Description : This file is source code for Assignment #2-2		 //
 ///////////////////////////////////////////////////////////////////////
 
 #define _GNU_SOURCE // FNM_CASEFOLD option
@@ -17,7 +17,6 @@
 #include <stdlib.h> // for malloc, free
 #include <sys/types.h>
 #include <sys/socket.h> // for socket
-#include <sys/sendfile.h>
 #include <netinet/in.h>
 #include <arpa/inet.h> 
 #include <unistd.h> // for option
@@ -56,103 +55,103 @@ static char response_message[BUFSIZE*BUFSIZE*BUFSIZE] = {0,};
 static char content_type[20] = {0,};
 
 int main() {
-	struct sockaddr_in srv_addr, cli_addr;
-	int sd;
+	struct sockaddr_in srv_addr, cli_addr; // address of server and client
+	int sd; // socket descripter
 
-	if ((sd = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
+	if ((sd = socket(PF_INET, SOCK_STREAM, 0)) < 0) { // open socket
 		printf("Server : Can't open stream socket\n");
 		exit(1);
 	}	
 
-	int sock_opt = 1;
+	int sock_opt = 1; // socket option to prevent error
 	setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &sock_opt, sizeof(sock_opt));
 
-	memset(&srv_addr, 0, sizeof(srv_addr));
-	srv_addr.sin_family = AF_INET;
-	srv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	srv_addr.sin_port = htons(PORT);
+	memset(&srv_addr, 0, sizeof(srv_addr)); // initailize
+	srv_addr.sin_family = AF_INET; // INET
+	srv_addr.sin_addr.s_addr = htonl(INADDR_ANY); // make host address to network address
+	srv_addr.sin_port = htons(PORT); // port
 
-	if (bind(sd, (struct sockaddr*)&srv_addr, sizeof(srv_addr))<0) {
+	if (bind(sd, (struct sockaddr*)&srv_addr, sizeof(srv_addr))<0) { // bind server and socket
 		printf("Server : Can't bind local address\n");
 		exit(1);
 	}
 
-	listen(sd, 1000);
+	listen(sd, 1000); // listen client
 	while (1) {
 		struct in_addr inet_cli_addr;
-		char buf[BUFSIZE] = {0,};
-		char url[URL_LEN] = {0,};
+		char buf[BUFSIZE] = {0,}; // buffer to read request 
+		char url[URL_LEN] = {0,}; // url string
 		char cwd[URL_LEN] = {0,}; // buffer of current working directory 
 		getcwd(cwd, URL_LEN); // get current working directory
-		cwd_len = strlen(cwd);
-		char response_header[BUFSIZE] = {0,};
-		char method[20] = {0,};
-		char *tok = NULL;
-		int status = 200;
-		unsigned int len;
+		cwd_len = strlen(cwd); // length of current directory
+		char response_header[BUFSIZE] = {0,}; 
+		char method[20] = {0,}; // method from request
+		char *tok = NULL; 
+		int status = 200; // response status
+		unsigned int len; 
 
 		len = sizeof(cli_addr);
-		cli_sd = accept(sd, (struct sockaddr*)&cli_addr, &len);
+		cli_sd = accept(sd, (struct sockaddr*)&cli_addr, &len); // accept client
 		if (cli_sd < 0) {
 			printf("Server : accept failed\n");
 			exit(1);
 		}
-		inet_cli_addr.s_addr = cli_addr.sin_addr.s_addr;
-		printf("[%s : %d] client was connected\n", inet_ntoa(inet_cli_addr), cli_addr.sin_port);
-		read(cli_sd, buf, BUFSIZE);
+		inet_cli_addr.s_addr = cli_addr.sin_addr.s_addr; // initialize
+		printf("[%s : %d] client was connected\n", inet_ntoa(inet_cli_addr), cli_addr.sin_port); // print url and port
+		read(cli_sd, buf, BUFSIZE); // read request from client
 		puts("====================================");
-		printf("Request from [%s : %d]\n", inet_ntoa(inet_cli_addr), cli_addr.sin_port);
+		printf("Request from [%s : %d]\n", inet_ntoa(inet_cli_addr), cli_addr.sin_port); // clinet address
 		puts(buf);
 		puts("====================================");	
 	
 		tok = strtok(buf, " ");
-		strcpy(method, tok);
+		strcpy(method, tok); // tok method
 		if (strcmp(method, "GET") == 0) {
-			tok = strtok(0, " ");
-			if (strstr(tok, "favicon.ico")) continue;
-			strcpy(url, tok);
-			if (strcmp(url, "/") == 0) {
+			tok = strtok(0, " "); // tok url
+			if (strstr(tok, "favicon.ico")) continue; 
+			strcpy(url, tok); 
+			if (strcmp(url, "/") == 0) { // root dir
 				aflag = 0;
 			}
-			else {
+			else { // other
 				aflag = 1;
 			}
-			strcat(cwd, url);
+			strcat(cwd, url); 
 		}
 
 		t_list *head = 0; // head of list
 		DIR *dirp;
 		int fd = 0;
+		int nbyte = 0;
 
 		if ((dirp = opendir(cwd)) == NULL) { // not dir
 			t_list *temp = 0;
 			if (!(temp = (t_list*)malloc(sizeof(t_list)))) exit(1); // initialize temp
 			if (lstat(cwd, &(temp->st)) == -1) { // 404 not found
-				status = 404;
-				sprintf(response_message,
+				status = 404; 
+				sprintf(response_message, 
 					"<h1>Not Found</h1>"
 					"The request URL %s was not found on this server<br/>"
 					"HTTP %d - Not Page Found", cwd, status);
 			}
 			else { // file
-				int fd = open(cwd, O_RDONLY);
-				if (fnmatch("*.jpeg", cwd, FNM_CASEFOLD) == 0 || fnmatch("*.jpg", cwd, FNM_CASEFOLD) == 0 || fnmatch("*.png", cwd, FNM_CASEFOLD) == 0) 
+				int fd = open(cwd, O_RDONLY); // open file
+				if (fnmatch("*.jpeg", cwd, FNM_CASEFOLD) == 0 || fnmatch("*.jpg", cwd, FNM_CASEFOLD) == 0 || fnmatch("*.png", cwd, FNM_CASEFOLD) == 0) { // image process
 					strcpy(content_type, "image/*");
-			//	else if (temp->st.st_mode & (S_IXUSR || S_IXGRP || S_IXOTH)) 
-			//		strcpy(content_type, "text/plain");				
+				}
 				else {
-					strcpy(content_type, "text/plain");
-				} 
-				read(fd, response_message, BUFSIZE * BUFSIZE);
+					strcpy(content_type, "text/plain"); // source code or text file
+				}
+				nbyte = read(fd, response_message, temp->st.st_size); // read from file
 				close(fd);
 			}
 			free(temp);
 		}
 		else {
-			strcpy(content_type, "text/html");
+			strcpy(content_type, "text/html"); // directory html file
 			if (get_list(&head, dirp, cwd) == -1) return 0;	// make list of dirent
-			if (aflag == 0) {
-				sprintf(response_message, 
+			if (aflag == 0) { // root
+				sprintf(response_message, // Welcome
 					"<h1>Welcome to System Programming Http</h1>"
 					"<b>Directory path : %s <br/></b> ", cwd);
 			}
@@ -167,16 +166,18 @@ int main() {
 		}
 		closedir(dirp); // close
 
-		sprintf(response_header,
+		sprintf(response_header, // response header
 			"HTTP/1.1 %d OK\r\n"
 			"Server:2023 simple web server\r\n"
-			"Content-length:%lu\r\n"
-			"Content-type: %s\r\n\r\n", status, strlen(response_message), content_type);
+			"Connection: keep-alive\r\n"
+			"Content-type: %s\r\n"
+			"Content-length:%lu\r\n\r\n", status, content_type, (nbyte) ? nbyte : strlen(response_message));
 
 		write(cli_sd, response_header, strlen(response_header));
-		write(cli_sd, response_message, strlen(response_message));	
-		memset(response_message, 0, sizeof(response_message));
-		printf("[%s : %d] client was disconnected\n", inet_ntoa(inet_cli_addr), cli_addr.sin_port);
+		write(cli_sd, response_message, strlen(response_message));	// write reponse
+		memset(response_message, 0, sizeof(response_message)); // reset
+
+		printf("[%s : %d] client was disconnected\n", inet_ntoa(inet_cli_addr), cli_addr.sin_port); // to connect other request
 
 		close(cli_sd);	
 	}
@@ -207,6 +208,7 @@ void free_list(t_list **head) {
 // ================================================================= //
 // Input: t_list** -> pointer of head, 								 //
 // 		  DIR* -> directory stream for getting directory entry info  //
+//		  path -> path to earn stat									 //
 // Output: int // success 0 fail -1									 //
 // Purpose: Make linked list which contain name of files in certain  //
 // 			directory to print out 									 //
@@ -427,7 +429,7 @@ void print_node(char* path, char* name) {
 	strcat(response_message, buf);
 
 	sprintf(buf, "</td></tr>");
-	strcat(response_message, buf);
+	strcat(response_message, buf); 
 }
 
 ///////////////////////////////////////////////////////////////////////
