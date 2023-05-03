@@ -52,8 +52,6 @@ static int aflag = 0; // -a option
 static int cli_sd;
 static char response_message[BUFSIZE*BUFSIZE] = {0,};
 static char content_type[20] = {0,};
-static char url[URL_LEN] = {0,};
-
 
 int main() {
 	struct sockaddr_in srv_addr, cli_addr;
@@ -81,6 +79,7 @@ int main() {
 	while (1) {
 		struct in_addr inet_cli_addr;
 		char buf[BUFSIZE] = {0,};
+		char url[URL_LEN] = {0,};
 		char response_header[BUFSIZE] = {0,};
 		char method[20] = {0,};
 		char *tok = NULL;
@@ -103,25 +102,20 @@ int main() {
 	
 		tok = strtok(buf, " ");
 		strcpy(method, tok);
-		printf("before url = %s\n", url);
 		if (strcmp(method, "GET") == 0) {
 			tok = strtok(0, " ");
-			if (!strstr(tok, "favicon.ico")) {
-				if (url[0]) strcat(url, tok+1);
-				else strcpy(url, tok);
-				printf("after url = %s\n", url);
-				if (strcmp(url, "/") == 0)
-					aflag = 0;
-				else 
-					aflag = 1;
-			}
+			if (strstr(tok, "favicon.ico")) continue;
+			strcpy(url, tok);
+			if (strcmp(url, "/") == 0)
+				aflag = 0;
+			else 
+				aflag = 1;
 		}
 
 		t_list *head = 0; // head of list
 		DIR *dirp;
 		if ((dirp = opendir(url)) == NULL) { // not dir
 			t_list *temp = 0;
-			if (!(head = (t_list*)malloc(sizeof(t_list)))) exit(1); // initialize head
 			if (!(temp = (t_list*)malloc(sizeof(t_list)))) exit(1); // initialize temp
 			if (lstat(url, &(temp->st)) == -1) { // 404 not found
 				status = 404;
@@ -131,19 +125,27 @@ int main() {
 					"HTTP %d - Not Page Found", url, status);
 			}
 			else { // file
+				FILE *fs;
 				if (fnmatch("*.jpg", url, FNM_CASEFOLD) == 0 || fnmatch("*.jpeg", url, FNM_CASEFOLD) == 0 || fnmatch("*.png", url, FNM_CASEFOLD) == 0) {
 					strcpy(content_type, "image/*");
-					printf("type = %s\n", content_type);
+					printf("image!\n");
+					fs = fopen(url, "rb");
 				}
-				else
+				else if (temp->st.st_mode && (S_IXUSR || S_IXGRP || S_IXOTH)) {
+					fs = fopen(url, "rb");
+				}
+				else {
 					strcpy(content_type, "text/plain\0");
-				head->next = temp;
-				sprintf(response_message, 
-					"<h1>System Programming Http</h1>"
-					"<b>Directory path : %s <br/></b>", url);			
-				print_list(&head);
+					fs = fopen(url, "r");
+				}
+				
+				while(!feof(fs)) {
+					char file[BUFSIZE];
+					fgets(file, BUFSIZE, fs);
+					strcat(response_message, file);
+				}
+				fclose(fs);
 			}
-			free(head);
 			free(temp);
 		}
 		else {
@@ -173,7 +175,7 @@ int main() {
 
 		write(cli_sd, response_header, strlen(response_header));
 		write(cli_sd, response_message, strlen(response_message));
-
+		memset(response_message, 0, sizeof(response_message));
 		printf("[%s : %d] client was disconnected\n", inet_ntoa(inet_cli_addr), cli_addr.sin_port);
 
 		close(cli_sd);	
@@ -229,16 +231,10 @@ int get_list(t_list **list, DIR *dirp, char *path) {
 
 		strcpy(temp->name, dir->d_name);
 		strcpy(temp->fullpath, path);
-		if (dir->d_name == "..") {
-			int ri = strlen(temp->fullpath);
-			while(temp->fullpath[ri] != '/') {
-				temp->fullpath[ri--] = 0;
-			}
-		}
-		else if (dir->d_name != ".") {
-			temp->fullpath[strlen(path)] = '/';
-			strcpy(temp->fullpath + strlen(path) + 1, temp->name);
-		}
+
+		if (temp->fullpath[strlen(temp->fullpath)-1] != '/')
+			strcat(temp->fullpath, "/");
+		strcat(temp->fullpath, temp->name);
 
 		lstat(temp->fullpath, &temp->st); // get stat
 		temp->next = 0;
@@ -371,8 +367,7 @@ void print_node(char* path, char* name) {
 
 
 
-
-	sprintf(buf, "<tr><td> <a href=\"%s\">%s</a> </td>", name, name);
+	sprintf(buf, "<tr><td> <a href=\"%s\">%s</a> </td>", path, name);
 	strcat(response_message, buf);
 
 
