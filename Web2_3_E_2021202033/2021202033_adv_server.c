@@ -42,6 +42,14 @@ typedef struct s_list {
 	struct s_list *prev; // use when sorting
 } t_list;
 
+typedef struct s_client {
+	int No;
+	int pid;
+	int port;
+	char IP[20];
+	char time[50];
+} t_client;
+
 void fnmatch2argv(int *argc, char **argv[]); // convert wild card to names matched
 void free_list(t_list **head); // free list
 int get_list(t_list **head, DIR *dirp, char *path); // make list
@@ -55,6 +63,17 @@ static int cli_sd;
 static unsigned int cwd_len = 0;
 static char response_message[BUFSIZE*BUFSIZE*BUFSIZE] = {0,};
 static char content_type[20] = {0,};
+
+static unsigned int alarm_flag = 0;
+
+void sigHandler(int sig) {
+	if (sig == SIGCHLD) {
+
+	}
+	else if (sig == SIGALRM) {
+		alarm_flag = 1;
+	}
+}
 
 int main() {
 	struct sockaddr_in srv_addr, cli_addr; // address of server and client
@@ -79,140 +98,163 @@ int main() {
 	}
 
 	listen(sd, 5); // listen client
+	signal(SIGCHLD, sigHandler);
+	signal(SIGALRM, sigHandler);
 	while (1) {
-		pid_t pid;
-		int term_status;
-		static int No = 0;
-		if ((pid = fork()) == 0) {
-			struct in_addr inet_cli_addr;
-			char buf[BUFSIZE] = {0,}; // buffer to read request 
-			char url[URL_LEN] = {0,}; // url string
-			char cwd[URL_LEN] = {0,}; // buffer of current working directory 
-			getcwd(cwd, URL_LEN); // get current working directory
-			cwd_len = strlen(cwd); // length of current directory
-			char response_header[BUFSIZE] = {0,}; 
-			char method[20] = {0,}; // method from request
-			char *tok = NULL; 
-			int status = 200; // response status
-			unsigned int len; 
+		alarm(10);
+		while (!alarm_flag) {
+			pid_t pid;
+			int term_status;
+			static int No = 0;
+			if ((pid = fork()) == 0) {
+				struct in_addr inet_cli_addr;
+				char buf[BUFSIZE] = {0,}; // buffer to read request 
+				char url[URL_LEN] = {0,}; // url string
+				char cwd[URL_LEN] = {0,}; // buffer of current working directory 
+				getcwd(cwd, URL_LEN); // get current working directory
+				cwd_len = strlen(cwd); // length of current directory
+				char response_header[BUFSIZE] = {0,}; 
+				char method[20] = {0,}; // method from request
+				char *tok = NULL; 
+				int status = 200; // response status
+				unsigned int len; 
 
-			len = sizeof(cli_addr);
-			cli_sd = accept(sd, (struct sockaddr*)&cli_addr, &len); // accept client
-			if (cli_sd < 0) {
-				printf("Server : accept failed\n");
-				exit(1);
-			}
-			
-			FILE* fs = fopen("accessible.usr", "r");
-			int access = 0;
-			int nbyte = 0;
-			inet_cli_addr.s_addr = cli_addr.sin_addr.s_addr; // cli inet addr initialize
-			
-			if (fnmatch(buf, inet_ntoa(inet_cli_addr), 0))
-			while(fgets(buf, BUFSIZE, fs)) {
-				buf[strcspn(buf, "\n")] = '\0';
-				if (fnmatch(buf, inet_ntoa(inet_cli_addr), 0) == 0) {
-					access = 1;
-					break;
+				len = sizeof(cli_addr);
+				cli_sd = accept(sd, (struct sockaddr*)&cli_addr, &len); // accept client
+				if (cli_sd < 0) {
+					printf("Server : accept failed\n");
+					exit(1);
 				}
-			}
-			if (access == 0) {
-				strcpy(content_type, "text/html"); // directory html file
-				sprintf(response_message, 
-					"<h1>Access denied!</h1>"
-					"<h2>Your IP : %s</h2>"
-					"You have no permission to access this web server<br/>"
-					"HTTP 403.6 - Forbidden: IP address reject", inet_ntoa(inet_cli_addr));
-			}
-			else {
-				printf("[%s : %d] client was connected\n", inet_ntoa(inet_cli_addr), cli_addr.sin_port); // print url and port
-				read(cli_sd, buf, BUFSIZE); // read request from client
-				puts("====================================");
-				printf("Request from [%s : %d]\n", inet_ntoa(inet_cli_addr), cli_addr.sin_port); // clinet address
-				puts(buf);
-				puts("====================================");	
-			
-				tok = strtok(buf, " ");
-				strcpy(method, tok); // tok method
-				if (strcmp(method, "GET") == 0) {
-					tok = strtok(0, " "); // tok url
-					if (strstr(tok, "favicon.ico")) continue; 
-					strcpy(url, tok); 
-					if (strcmp(url, "/") == 0) { // root dir
-						aflag = 0;
+				
+				FILE* fs = fopen("accessible.usr", "r");
+				int access = 0;
+				int nbyte = 0;
+				inet_cli_addr.s_addr = cli_addr.sin_addr.s_addr; // cli inet addr initialize
+				
+				while(fgets(buf, BUFSIZE, fs)) {
+					buf[strcspn(buf, "\n")] = '\0';
+					if (fnmatch(buf, inet_ntoa(inet_cli_addr), 0) == 0) {
+						access = 1;
+						break;
 					}
-					else { // other
-						aflag = 1;
-					}
-					strcat(cwd, url); 
 				}
-
-				t_list *head = 0; // head of list
-				DIR *dirp;
-				int fd = 0;
-
-				if ((dirp = opendir(cwd)) == NULL) { // not dir
-					t_list *temp = 0;
-					if (!(temp = (t_list*)malloc(sizeof(t_list)))) exit(1); // initialize temp
-					if (lstat(cwd, &(temp->st)) == -1) { // 404 not found
-						status = 404; 
-						sprintf(response_message, 
-							"<h1>Not Found</h1>"
-							"The request URL %s was not found on this server<br/>"
-							"HTTP %d - Not Page Found", cwd, status);
-					}
-					else { // file
-						fd = open(cwd, O_RDONLY); // open file
-						if (fnmatch("*.jpeg", cwd, FNM_CASEFOLD) == 0 || fnmatch("*.jpg", cwd, FNM_CASEFOLD) == 0 || fnmatch("*.png", cwd, FNM_CASEFOLD) == 0) { // image process
-							strcpy(content_type, "image/*");
-						}
-						else {
-							strcpy(content_type, "text/plain"); // source code or text file
-						}
-						nbyte = read(fd, response_message, temp->st.st_size); // read from file
-						close(fd);
-					}
-					free(temp);
+				if (access == 0) {
+					strcpy(content_type, "text/html"); // directory html file
+					sprintf(response_message, 
+						"<h1>Access denied!</h1>"
+						"<h2>Your IP : %s</h2>"
+						"You have no permission to access this web server<br/>"
+						"HTTP 403.6 - Forbidden: IP address reject", inet_ntoa(inet_cli_addr));
 				}
 				else {
-					strcpy(content_type, "text/html"); // directory html file
-					if (get_list(&head, dirp, cwd) == -1) return 0;	// make list of dirent
-					if (aflag == 0) { // root
-						sprintf(response_message, // Welcome
-							"<h1>Welcome to System Programming Http</h1>"
-							"<b>Directory path : %s <br/></b> ", cwd);
+					No++;
+					puts("========= New Client ============");
+					printf("IP : %s\nPort : %d\n", inet_ntoa(inet_cli_addr), cli_addr.sin_port); // clinet address
+					puts("=================================\n");	
+				
+					read(cli_sd, buf, BUFSIZE); // read request from client
+					tok = strtok(buf, " ");
+					strcpy(method, tok); // tok method
+					if (strcmp(method, "GET") == 0) {
+						tok = strtok(0, " "); // tok url
+						if (strstr(tok, "favicon.ico")) continue; 
+						strcpy(url, tok); 
+						if (strcmp(url, "/") == 0) { // root dir
+							aflag = 0;
+						}
+						else { // other
+							aflag = 1;
+						}
+						strcat(cwd, url); 
+					}
+
+					t_list *head = 0; // head of list
+					DIR *dirp;
+					int fd = 0;
+
+					if ((dirp = opendir(cwd)) == NULL) { // not dir
+						t_list *temp = 0;
+						if (!(temp = (t_list*)malloc(sizeof(t_list)))) exit(1); // initialize temp
+						if (lstat(cwd, &(temp->st)) == -1) { // 404 not found
+							status = 404; 
+							sprintf(response_message, 
+								"<h1>Not Found</h1>"
+								"The request URL %s was not found on this server<br/>"
+								"HTTP %d - Not Page Found", cwd, status);
+						}
+						else { // file
+							fd = open(cwd, O_RDONLY); // open file
+							if (fnmatch("*.jpeg", cwd, FNM_CASEFOLD) == 0 || fnmatch("*.jpg", cwd, FNM_CASEFOLD) == 0 || fnmatch("*.png", cwd, FNM_CASEFOLD) == 0) { // image process
+								strcpy(content_type, "image/*");
+							}
+							else {
+								strcpy(content_type, "text/plain"); // source code or text file
+							}
+							nbyte = read(fd, response_message, temp->st.st_size); // read from file
+							close(fd);
+						}
+						free(temp);
 					}
 					else {
-						sprintf(response_message, 
-							"<h1>System Programming Http</h1>"
-							"<b>Directory path : %s <br/></b> ", cwd);			
+						strcpy(content_type, "text/html"); // directory html file
+						if (get_list(&head, dirp, cwd) == -1) return 0;	// make list of dirent
+						if (aflag == 0) { // root
+							sprintf(response_message, // Welcome
+								"<h1>Welcome to System Programming Http</h1>"
+								"<b>Directory path : %s <br/></b> ", cwd);
+						}
+						else {
+							sprintf(response_message, 
+								"<h1>System Programming Http</h1>"
+								"<b>Directory path : %s <br/></b> ", cwd);			
+						}
+						sort_list(&head); // sort list
+						print_list(&head); // print list of current working directory
+						free_list(&head); // free
 					}
-					sort_list(&head); // sort list
-					print_list(&head); // print list of current working directory
-					free_list(&head); // free
+					closedir(dirp); // close
 				}
-				closedir(dirp); // close
+
+				sprintf(response_header, // response header
+					"HTTP/1.1 %d OK\r\n"
+					"Server:2023 simple web server\r\n"
+					"Connection: keep-alive\r\n"
+					"Content-type: %s\r\n"
+					"Content-length:%lu\r\n\r\n", status, content_type, (nbyte) ? nbyte : strlen(response_message));
+
+				write(cli_sd, response_header, strlen(response_header));
+				write(cli_sd, response_message, strlen(response_message));	// write reponse
+				memset(response_message, 0, sizeof(response_message)); // reset
+					
+				puts("====== Disconnected Client ======");
+				printf("IP : %s\nPort : %d\n", inet_ntoa(inet_cli_addr), cli_addr.sin_port); // clinet address
+				puts("=================================\n");	
+				
+				close(cli_sd);
+				t_client c;
+				c.No = No;
+				c.pid = getpid();
+				strcpy(c.IP, inet_ntoa(inet_cli_addr));
+				c.port = cli_addr.sin_port;
+				void *term_status = (void*)&c;
+				exit(1);
 			}
+			else if (pid > 0) {
+				term_status = 0;
+				waitpid(-1, &term_status, WNOHANG);
+				if (term_status) {
 
-			sprintf(response_header, // response header
-				"HTTP/1.1 %d OK\r\n"
-				"Server:2023 simple web server\r\n"
-				"Connection: keep-alive\r\n"
-				"Content-type: %s\r\n"
-				"Content-length:%lu\r\n\r\n", status, content_type, (nbyte) ? nbyte : strlen(response_message));
-
-			write(cli_sd, response_header, strlen(response_header));
-			write(cli_sd, response_message, strlen(response_message));	// write reponse
-			memset(response_message, 0, sizeof(response_message)); // reset
-
-			printf("[%s : %d] client was disconnected\n", inet_ntoa(inet_cli_addr), cli_addr.sin_port); // to connect other request
-
-			close(cli_sd);
-			exit(1);
+				}
+				//t_client c;
+				//printf("No = %d\n", c.No);
+				//printf("pid = %d\n", c.pid);
+				//printf("IP = %s\n", c.IP);
+				//printf("Port = %d\n", c.port);
+			}
 		}
-		else {
-			wait(&term_status);
-		}
+		alarm_flag = 0; // reset the flag
+		// TODO : after the alarm has triggered
+		printf("alarm ring!\n");
 	}
 	return 0;
 }
