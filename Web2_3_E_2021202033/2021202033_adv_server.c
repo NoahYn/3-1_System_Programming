@@ -107,14 +107,14 @@ int main() {
 			int access = 0;
 			int nbyte = 0;
 			inet_cli_addr.s_addr = cli_addr.sin_addr.s_addr; // cli inet addr initialize
-
+			
+			if (fnmatch(buf, inet_ntoa(inet_cli_addr), 0))
 			while(fgets(buf, BUFSIZE, fs)) {
-				if (strstr(buf, inet_ntoa(inet_cli_addr))) {
+				buf[strcspn(buf, "\n")] = '\0';
+				if (fnmatch(buf, inet_ntoa(inet_cli_addr), 0) == 0) {
 					access = 1;
 					break;
 				}
-				printf("%s", buf);
-				printf("%s\n", inet_ntoa(inet_cli_addr));
 			}
 			if (access == 0) {
 				strcpy(content_type, "text/html"); // directory html file
