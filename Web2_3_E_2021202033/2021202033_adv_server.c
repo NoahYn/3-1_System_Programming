@@ -42,12 +42,12 @@ typedef struct s_list {
 	struct s_list *prev; // use when sorting
 } t_list;
 
-typedef struct s_client {
-	int No;
-	int pid;
-	int port;
-	char IP[20];
-	char time[50];
+typedef struct s_client { // information of client
+	int No; // N-th connected client
+	int pid; // pid of response server
+	int port; // port number
+	char IP[20]; // IP address
+	char time[50]; // time when client and server connected
 } t_client;
 
 void fnmatch2argv(int *argc, char **argv[]); // convert wild card to names matched
@@ -59,7 +59,7 @@ void print_node(char* path, char *name); // print each file
 void print_list(t_list **head); // print list
 
 static int aflag = 0; // -a option
-static int cli_sd;
+static int cli_sd; 
 static unsigned int cwd_len = 0;
 static char response_message[BUFSIZE*BUFSIZE*BUFSIZE] = {0,};
 static char content_type[20] = {0,};
@@ -76,22 +76,22 @@ static unsigned int alarm_flag = 0;
 ///////////////////////////////////////////////////////////////////////
 
 void sigHandler(int sig) {
-	if (sig == SIGALRM) {
-		puts("========= Connection History ===================================");
-		printf("Number of request(s) : %d\n", No);
+	if (sig == SIGALRM) { // timer is over!
+		puts("========= Connection History ==================================="); // print recently connected client list
+		printf("Number of request(s) : %d\n", No); // print number of client connected
 		printf("No.\tIP\t\tPID\tPORT\tTIME\n");
-		for (int i = 10; i >= 1; i--) { // recent time order
+		for (int i = 10; i >= 1; i--) { // print in recent time order
 			if (cli_history[(No+i)%10].No == 0) continue;
 			printf("%d\t%s\t%d\t%d\t%s", cli_history[(No+i)%10].No, cli_history[(No+i)%10].IP, cli_history[(No+i)%10].pid, cli_history[(No+i)%10].port, cli_history[(No+i)%10].time);
 		}
 		printf("\n");
 		alarm_flag = 1; // loop flag == 1 until timer is over
 	}
-	else if (sig == SIGCHLD) {
+	else if (sig == SIGCHLD) { // child dies
 		int stat;
-		wait(&stat);
-		stat >>= 8;
-		puts("====== Disconnected Client ======");
+		wait(&stat); // get termination status from child that is number n-th connected 
+		stat >>= 8; // make bit lower
+		puts("====== Disconnected Client ======"); // print information of disconneted client
 		printf("IP : %s\nPort : %d\n", cli_history[stat%10].IP, cli_history[stat%10].port);
 		puts("=================================\n");	
 	}
@@ -106,8 +106,8 @@ int main() {
 		exit(1);
 	}	
 
-	setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
-	setsockopt(sd, SOL_SOCKET, SO_KEEPALIVE, &(int){1}, sizeof(int));
+	setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)); // to prevent bind err
+	setsockopt(sd, SOL_SOCKET, SO_KEEPALIVE, &(int){1}, sizeof(int)); // to keep connection alive until download completed 
 
 	memset(&srv_addr, 0, sizeof(srv_addr)); // initailize
 	srv_addr.sin_family = AF_INET; // INET
@@ -115,12 +115,12 @@ int main() {
 	srv_addr.sin_port = htons(PORT); // port
 
 	if (bind(sd, (struct sockaddr*)&srv_addr, sizeof(srv_addr))<0) { // bind server and socket
-		printf("Server : Can't bind local address\n");
+		perror("Server : Can't bind local address\n");
 		exit(1);
 	}
 
 	listen(sd, 5); // listen client
-	signal(SIGALRM, sigHandler);
+	signal(SIGALRM, sigHandler); // call signal handler to ready
 	signal(SIGCHLD, sigHandler);
 	while (1) {
 		alarm(10); // set signal timer 10 seconds
@@ -160,7 +160,7 @@ int main() {
 
 			if (access == 0) { // client has no access
 				strcpy(content_type, "text/html"); // html file
-				sprintf(response_message, 
+				sprintf(response_message, // no permission message
 					"<h1>Access denied!</h1>"
 					"<h2>Your IP : %s</h2>"
 					"You have no permission to access this web server<br/>"
@@ -173,7 +173,7 @@ int main() {
 				strcpy(method, tok); // tok method
 				if (strcmp(method, "GET") == 0) {
 					tok = strtok(0, " "); // tok url
-					if (strstr(tok, "favicon.ico")) continue; 
+					if (strstr(tok, "favicon.ico")) continue; // skip favicon
 					strcpy(url, tok); 
 					if (strcmp(url, "/") == 0) { // root dir
 						aflag = 0;
@@ -190,11 +190,16 @@ int main() {
 				++No;
 				pid = fork();
 				if (pid > 0) { // parent process
-					time_t t;
-					time(&t);
+				// make connection history 
+
+
+
+
+					time_t t; 
+					time(&t); // get connected time
 					cli_history[No%10].No = No;
 					strcpy(cli_history[No%10].IP, inet_ntoa(inet_cli_addr));
-					strcpy(cli_history[No%10].time, ctime(&t));
+					strcpy(cli_history[No%10].time, ctime(&t)); // store time in string format 
 					cli_history[No%10].pid = pid;
 					cli_history[No%10].port = cli_addr.sin_port;
 					close(cli_sd);
@@ -218,12 +223,12 @@ int main() {
 						else { // file
 							fd = open(cwd, O_RDONLY); // open file
 							if (fnmatch("*.jpeg", cwd, FNM_CASEFOLD) == 0 || fnmatch("*.jpg", cwd, FNM_CASEFOLD) == 0 || fnmatch("*.png", cwd, FNM_CASEFOLD) == 0) { // image process
-								strcpy(content_type, "image/*");
+								strcpy(content_type, "image/*"); // image file
 							}
 							else {
 								strcpy(content_type, "text/plain"); // source code or text file
 							}
-							response_len = temp->st.st_size;
+							response_len = temp->st.st_size; // get size of file
 						}
 						free(temp);
 					}
@@ -253,11 +258,11 @@ int main() {
 						"Content-type: %s\r\n"
 						"Content-length:%lu\r\n\r\n", status, content_type, response_len);
 
-					write(cli_sd, response_header, strlen(response_header));
-					if (fd) {
-						int num_read, num_write;
+					write(cli_sd, response_header, strlen(response_header)); // write header
+					if (fd) { // file
+						int num_read;
 						while((num_read = read(fd, response_message, BUFSIZE)) > 0) {
-							num_write = write(cli_sd, response_message, num_read);
+							write(cli_sd, response_message, num_read);
 						}
 					}
 					else
