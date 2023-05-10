@@ -167,11 +167,11 @@ int main() {
 					"HTTP 403.6 - Forbidden: IP address reject", inet_ntoa(inet_cli_addr));
 
 				sprintf(response_header, // response header
-					"HTTP/1.1 %d OK\r\n"
+					"HTTP/1.1 403.6 OK\r\n"
 					"Server:2023 simple web server\r\n"
 					"Connection: keep-alive\r\n"
 					"Content-type: %s\r\n"
-					"Content-length:%lu\r\n\r\n", status, content_type, response_len);
+					"Content-length:%lu\r\n\r\n", content_type, strlen(response_message));
 
 				write(cli_sd, response_header, strlen(response_header)); // write header
 				write(cli_sd, response_message, strlen(response_message));	// write reponse
