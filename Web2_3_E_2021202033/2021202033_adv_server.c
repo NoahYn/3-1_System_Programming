@@ -1,12 +1,12 @@
 ///////////////////////////////////////////////////////////////////////
-// File Name : 2021202033_web_server.c							 	 //
-// Date : 2023/05/03	 											 //
+// File Name : 2021202033_adv_server.c							 	 //
+// Date : 2023/05/10	 											 //
 // Os : Ubuntu 16.04 LTS 64bits 									 //
 // Author : Sung Min Yoon 									 	 	 //
 // Student ID : 2021202033											 //
 // ----------------------------------------------------------------- //
-// Title : System Programming Assignment #2-2						 //
-// Description : This file is source code for Assignment #2-2		 //
+// Title : System Programming Assignment #2-3						 //
+// Description : This file is source code for Assignment #2-3		 //
 ///////////////////////////////////////////////////////////////////////
 
 #define _GNU_SOURCE // FNM_CASEFOLD option
@@ -102,12 +102,12 @@ int main() {
 	int sd; // socket descripter
 
 	if ((sd = socket(PF_INET, SOCK_STREAM, 0)) < 0) { // open socket
-		printf("Server : Can't open stream socket\n");
+		perror("Server : Can't open stream socket\n");
 		exit(1);
 	}	
 
-	int sock_opt = 1; // socket option to prevent error
-	setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &sock_opt, sizeof(sock_opt));
+	setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
+	setsockopt(sd, SOL_SOCKET, SO_KEEPALIVE, &(int){1}, sizeof(int));
 
 	memset(&srv_addr, 0, sizeof(srv_addr)); // initailize
 	srv_addr.sin_family = AF_INET; // INET
@@ -137,12 +137,12 @@ int main() {
 			char *tok = NULL; 
 			int status = 200; // response status
 			unsigned int len; 
-			size_t nbyte = 0;
+			size_t response_len = 0;
 
 			len = sizeof(cli_addr);
 			cli_sd = accept(sd, (struct sockaddr*)&cli_addr, &len); // accept client
 			if (cli_sd < 0) { // accept error
-				printf("Server : accept failed\n");
+				perror("Server : accept failed\n");
 				exit(1);
 			}
 
@@ -165,6 +165,7 @@ int main() {
 					"<h2>Your IP : %s</h2>"
 					"You have no permission to access this web server<br/>"
 					"HTTP 403.6 - Forbidden: IP address reject", inet_ntoa(inet_cli_addr));
+				response_len = strlen(response_message);
 			}
 			else { // clinet has access right. 				
 				read(cli_sd, buf, BUFSIZE); // read request from client
@@ -212,6 +213,7 @@ int main() {
 								"<h1>Not Found</h1>"
 								"The request URL %s was not found on this server<br/>"
 								"HTTP %d - Not Page Found", cwd, status);
+							response_len = strlen(response_message);
 						}
 						else { // file
 							fd = open(cwd, O_RDONLY); // open file
@@ -221,8 +223,7 @@ int main() {
 							else {
 								strcpy(content_type, "text/plain"); // source code or text file
 							}
-							nbyte = read(fd, response_message, temp->st.st_size); // read from file
-							close(fd);
+							response_len = temp->st.st_size;
 						}
 						free(temp);
 					}
@@ -242,6 +243,7 @@ int main() {
 						sort_list(&head); // sort list
 						print_list(&head); // print list of current working directory
 						free_list(&head); // free
+						response_len = strlen(response_message);
 					}
 					closedir(dirp); // close
 					sprintf(response_header, // response header
@@ -249,12 +251,20 @@ int main() {
 						"Server:2023 simple web server\r\n"
 						"Connection: keep-alive\r\n"
 						"Content-type: %s\r\n"
-						"Content-length:%lu\r\n\r\n", status, content_type, (nbyte) ? nbyte : strlen(response_message));
+						"Content-length:%lu\r\n\r\n", status, content_type, response_len);
 
 					write(cli_sd, response_header, strlen(response_header));
-					write(cli_sd, response_message, strlen(response_message));	// write reponse
+					if (fd) {
+						int num_read, num_write;
+						while((num_read = read(fd, response_message, BUFSIZE)) > 0) {
+							num_write = write(cli_sd, response_message, num_read);
+						}
+					}
+					else
+						write(cli_sd, response_message, strlen(response_message));	// write reponse
 					memset(response_message, 0, sizeof(response_message)); // reset
 									
+					close(fd);
 					close(cli_sd);
 					exit(No);
 				}
