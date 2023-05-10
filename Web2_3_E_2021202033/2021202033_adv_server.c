@@ -165,7 +165,19 @@ int main() {
 					"<h2>Your IP : %s</h2>"
 					"You have no permission to access this web server<br/>"
 					"HTTP 403.6 - Forbidden: IP address reject", inet_ntoa(inet_cli_addr));
-				response_len = strlen(response_message);
+
+				sprintf(response_header, // response header
+					"HTTP/1.1 %d OK\r\n"
+					"Server:2023 simple web server\r\n"
+					"Connection: keep-alive\r\n"
+					"Content-type: %s\r\n"
+					"Content-length:%lu\r\n\r\n", status, content_type, response_len);
+
+				write(cli_sd, response_header, strlen(response_header)); // write header
+				write(cli_sd, response_message, strlen(response_message));	// write reponse
+				memset(response_message, 0, sizeof(response_message)); // reset
+									
+				close(cli_sd);
 			}
 			else { // clinet has access right. 				
 				read(cli_sd, buf, BUFSIZE); // read request from client
@@ -191,10 +203,6 @@ int main() {
 				pid = fork();
 				if (pid > 0) { // parent process
 				// make connection history 
-
-
-
-
 					time_t t; 
 					time(&t); // get connected time
 					cli_history[No%10].No = No;
@@ -213,7 +221,8 @@ int main() {
 						t_list *temp = 0;
 						if (!(temp = (t_list*)malloc(sizeof(t_list)))) exit(1); // initialize temp
 						if (lstat(cwd, &(temp->st)) == -1) { // 404 not found
-							status = 404; 
+							status = 404;
+							strcpy(content_type, "text/html"); // directory html file 
 							sprintf(response_message, 
 								"<h1>Not Found</h1>"
 								"The request URL %s was not found on this server<br/>"
@@ -266,7 +275,7 @@ int main() {
 						}
 					}
 					else
-						write(cli_sd, response_message, strlen(response_message));	// write reponse
+						write(cli_sd, response_message, response_len);	// write reponse
 					memset(response_message, 0, sizeof(response_message)); // reset
 									
 					close(fd);
