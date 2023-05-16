@@ -31,9 +31,9 @@
 #include <fnmatch.h> // fnmatch
 
 #define URL_LEN 256
-#define BUFSIZE 1024
-#define PORT 40000
-#define NCHLD 5
+#define BUFSIZE 1024 
+#define PORT 40000 // port number
+#define NCHLD 5 // # of child processes
 
 typedef struct s_list {
 	char name[256]; // file name
@@ -51,7 +51,7 @@ typedef struct s_history { // information of client
 	char time[50]; // time when client and server connected
 } t_history;
 
-typedef struct s_chld {
+typedef struct s_chld { // child process
 	int pid;
 	struct s_chld *next;
 } t_chld;
@@ -63,8 +63,7 @@ int strlscmp(char *s1, char *s2); // compare by the order given by assignment
 void sort_list(t_list **head); // sort list
 void print_node(char* path, char *name); // print each file
 void print_list(t_list **head); // print list
-void child_main(int sd, int addrlen);
-
+void child_main(int sd);
 
 static int aflag = 0; // -a option
 static int cli_sd; 
@@ -92,15 +91,15 @@ void sigHandler(int sig) {
 		printf("No.\tIP\t\tPID\tPORT\tTIME\n");
 		struct s_chld *chld_curr = chld_head;
 		while (chld_curr) {
-			kill(chld_curr->pid, SIGUSR1);
-			chld_curr = chld_curr->next;
+			kill(chld_curr->pid, SIGUSR1); // send a signal to child to print client's history
+			chld_curr = chld_curr->next; // next child
 		}
 		alarm_flag = 1; // loop flag == 1 until timer is over
 	}
 	else if (sig == SIGCHLD) { // child dies
 		int stat;
 		wait(&stat); // get termination status from child that is number n-th connected 
-		if (WIFEXITED(stat)) {
+		if (WIFEXITED(stat)) { // child is terminated normally
 			stat >>= 8; // make bit lower
 			time(&t);
 			puts("====== Disconnected Client ======"); // print information of disconneted client
@@ -112,24 +111,24 @@ void sigHandler(int sig) {
 		struct s_chld *chld_curr = chld_head;
 		int parent = 1;
 		while (chld_curr) {
-			if (chld_curr->pid == 0) {
-				parent = 0;
+			if (chld_curr->pid == 0) { // this process is child
+				parent = 0; 
 				break;
 			}
 			chld_curr = chld_curr->next;
 		}
-		if (parent) {
+		if (parent) { // we need only one process : parent
 			chld_curr = chld_head;
 			while (chld_curr) {
-				kill(chld_curr->pid, SIGTERM);
-				printf("[%.24s] %d process is terminated.\n", ctime(&t), chld_curr->pid);
-				chld_curr = chld_curr->next;
+				kill(chld_curr->pid, SIGTERM); // kill child process
+				printf("[%.24s] %d process is terminated.\n", ctime(&t), chld_curr->pid); // print child process info
+				chld_curr = chld_curr->next; // get next child
 			}
-			printf("[%.24s] Server is terminated.\n", ctime(&t));
-			exit(1);
+			printf("[%.24s] Server is terminated.\n", ctime(&t)); 
+			exit(1); 
 		}
 	}
-	else if (sig == SIGUSR1) {
+	else if (sig == SIGUSR1) { // print history
 		for (int i = 10; i >= 1; i--) { // print in recent time order
 			if (cli_history[(No+i)%10].No == 0) continue;
 			printf("%d\t%s\t%d\t%d\t%s", cli_history[(No+i)%10].No, cli_history[(No+i)%10].IP, cli_history[(No+i)%10].pid, cli_history[(No+i)%10].port, cli_history[(No+i)%10].time);
@@ -159,8 +158,8 @@ int main() {
 		perror("Server : Can't bind local address\n");
 		exit(1);
 	}
-	time(&t);
-	printf("[%.24s] Server is started.\n", ctime(&t));
+	time(&t); // get time
+	printf("[%.24s] Server is started.\n", ctime(&t)); // print time server is started
 
 	listen(sd, 5); // listen client
 	// call signal handler to ready
@@ -171,18 +170,18 @@ int main() {
 		while (!alarm_flag) {
 			for (chld_num; chld_num < NCHLD; chld_num++) { // pre-forking routine
 				struct s_chld *chld = (t_chld *)malloc(sizeof(t_chld));
-				if (chld_num == 0) {
-					chld_head = chld;
+				if (chld_num == 0) { // head
+					chld_head = chld; 
 				}
-				else {
+				else { // body
 					chld_curr->next = chld;
 				}
 				chld->next = 0; //chld_head; // circular linked list
 				chld->pid = fork();
-				if (chld->pid == 0) {
-					child_main(sd, sizeof(cli_addr));
+				if (chld->pid == 0) { // child process
+					child_main(sd);
 					while(1)
-						pause();
+						pause(); 
 					return 0;
 				}
 				chld_curr = chld;
@@ -193,9 +192,17 @@ int main() {
 	return 0;
 }
 
-void child_main(int sd, int addrlen) {
+///////////////////////////////////////////////////////////////////////
+// child_main														 //
+// ================================================================= //
+// Input: t_list** -> pointer of head, 								 //
+// Output: void														 //
+// Purpose: free memory of linked list								 //
+///////////////////////////////////////////////////////////////////////
+
+void child_main(int sd) {
 	time(&t);
-	printf("[%.24s] %d process is forked.\n", ctime(&t), getpid());
+	printf("[%.24s] %d process is forked.\n", ctime(&t), getpid()); // print time child process is forked
 
 	while (1) {
 		pid_t pid;
