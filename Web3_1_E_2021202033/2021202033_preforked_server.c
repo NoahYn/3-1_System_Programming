@@ -127,6 +127,9 @@ void sigHandler(int sig) {
 			printf("[%.24s] Server is terminated.\n", ctime(&t)); 
 			exit(1); 
 		}
+		else {
+			pause();
+		}
 	}
 	else if (sig == SIGUSR1) { // print history
 		for (int i = 10; i >= 1; i--) { // print in recent time order
@@ -163,7 +166,7 @@ int main() {
 
 	listen(sd, 5); // listen client
 	// call signal handler to ready
-	signal(SIGALRM, sigHandler); signal(SIGCHLD, sigHandler); signal(SIGINT, sigHandler); signal(SIGTERM, sigHandler); signal(SIGUSR1, sigHandler);
+	signal(SIGALRM, sigHandler); signal(SIGCHLD, sigHandler); signal(SIGINT, sigHandler); signal(SIGUSR1, sigHandler);
 
 	while (1) {
 		alarm(10); // set signal timer 10 seconds
@@ -181,7 +184,7 @@ int main() {
 				if (chld->pid == 0) { // child process
 					child_main(sd);
 					while(1)
-						pause(); 
+						pause();
 					return 0;
 				}
 				chld_curr = chld;
