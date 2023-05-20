@@ -36,7 +36,6 @@
 #define URL_LEN 256
 #define BUFSIZE 1024 
 #define PORT 40000 // port number
-#define NCHLD 5 // # of child processes
 
 typedef struct s_list {
 	char name[256]; // file name
@@ -67,10 +66,9 @@ typedef struct s_conf {
 } t_conf;
 
 typedef struct s_shm {
-	t_history history[50]; // recent client connection history
-//	t_chld* chld_head;
+	t_history history[50];
 	size_t idle_num;
-	pid_t ppid;
+	int No;
 } t_shm;
 
 static void fnmatch2argv(int *argc, char **argv[]); // convert wild card to names matched
@@ -81,21 +79,23 @@ static void sort_list(t_list **head); // sort list
 static void print_node(char* path, char *name); // print each file
 static void print_list(t_list **head); // print list
 static void child_main(int sd);
+void sigHandler(int sig);
+void *shmHandler(void *vptr);
 
 static int aflag = 0; // -a option
 static int cli_sd; 
 static unsigned int cwd_len = 0;
 static char response_message[BUFSIZE*BUFSIZE*BUFSIZE] = {0,};
 static char content_type[20] = {0,};
-static int No = 0; // n-th connected client
 static unsigned int alarm_flag = 0;
 static time_t t;
-static struct s_chld *chld_head;
+static t_chld *chld_head;
 static int chld_num = 0;
 static pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
-static struct s_shm* shm = 0;
 static int shm_id;
-static struct s_conf conf;
+static t_conf conf;
+static pid_t ppid;
+static pthread_t tid;
 
 ///////////////////////////////////////////////////////////////////////
 // sigHandler														 //
@@ -109,17 +109,18 @@ void sigHandler(int sig) {
 	if (sig == SIGALRM) { // timer is over!
 		puts("========= Connection History ==================================="); // print recently connected client list
 		printf("No.\tIP\t\tPID\tPORT\tTIME\n");
-		struct s_chld *chld_curr = chld_head;
-		if ((shm = (t_shm*)shmat(shm_id, (void*)0, 0)) == (void*)-1) { // open shared memory							
-				perror("shmat fail. in line 177\n");
-				return ;
+		t_shm* shm;
+
+		if ((shm = shmat(shm_id, NULL, 0)) == (void*)-1) { // shm attach
+			perror("shmat fail1.\n");
+			exit(1);
 		}
-		
-		for (int i = conf.MaxHistory; i >= 1; i--) { // print in recent time order
-			if (!conf.MaxHistory) break;
-			int idx = (No+i)%conf.MaxHistory; 
+
+		int num = 1;
+		for (int i = conf.MaxHistory; i >= 1; i--) {
+			int idx = (shm->No+i)%conf.MaxHistory;
 			if (shm->history[idx].pid == 0) continue;
-			printf("%ld\t%s\t%d\t%d\t%s", conf.MaxHistory-i+1, shm->history[idx].IP, shm->history[idx].pid, shm->history[idx].port, shm->history[idx].time);
+			printf("%d\t%s\t%d\t%d\t%s", num++, shm->history[idx].IP, shm->history[idx].pid, shm->history[idx].port, shm->history[idx].time);
 		}
 
 		alarm_flag = 1; // loop flag == 1 until timer is over
@@ -127,13 +128,6 @@ void sigHandler(int sig) {
 	else if (sig == SIGCHLD) { // child dies
 		int stat;
 		wait(&stat); // get termination status from child that is number n-th connected 
-		if (WIFEXITED(stat)) { // child is terminated normally
-			stat >>= 8; // make bit lower
-			time(&t);
-			puts("====== Disconnected Client ======"); // print information of disconneted client
-//			printf("[%.24s]\nIP : %s\nPort : %d\n", ctime(&t), history[stat%10].IP, history[stat%10].port);
-			puts("=================================\n");	
-		}
 	}
 	else if (sig == SIGINT) { // terminate all child process and self
 		struct s_chld *chld_curr = chld_head;
@@ -160,9 +154,16 @@ void sigHandler(int sig) {
 		}
 		exit(1);
 	}
-	else if (sig == SIGUSR1) {
-//		printf("[%.24s] IdleProcessCount : %d\n", ctime(&t), idle_num); // print time child process is forked
+	/*
+	else if (sig == SIGUSR1) { // idle process++
+		pthread_create(&tid, NULL, &shmHandler, &(long long){1});
+		pthread_join(tid, NULL);
 	}
+	else if (sig == SIGUSR2) { // idle process--
+		pthread_create(&tid, NULL, &shmHandler, &(long long){-1});
+		pthread_join(tid, NULL);
+	}
+	*/
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -172,19 +173,32 @@ void sigHandler(int sig) {
 // Output: 														 //
 // Purpose: handling shared memory									 //
 ///////////////////////////////////////////////////////////////////////
-
+/*
 void *shmHandler(void *vptr) {
-	if (shm == 0) {
-		if ((shm = (t_shm*)shmat(shm_id, (void*)0, 0)) == (void*)-1) {
-			perror("shmat fail. in line 177\n");
-			return NULL;
+	long long arg = *(long long *)vptr;
+	if ((long long)vptr > 0) {
+		pthread_mutex_lock(&mtx);
+		time(&t);
+		printf("[%.24s] IdleProcessCount : %ld\n", ctime(&t), ++(shm->idle_num)); // print time child process is forked
+		if (shm->idle_num > conf.MaxIdleNum) {
+	//		kill(SIGINT)
 		}
+		pthread_mutex_unlock(&mtx);
+	}
+	else {
+		pthread_mutex_lock(&mtx);
+		shm->idle_num--;
+		if (shm->idle_num < conf.MinIdleNum) {
+
+		}
+		pthread_mutex_unlock(&mtx);
 	}
 
 
 	return NULL;
 }
 
+*/
 
 ///////////////////////////////////////////////////////////////////////
 // rmshm															 //
@@ -195,7 +209,7 @@ void *shmHandler(void *vptr) {
 ///////////////////////////////////////////////////////////////////////
 
 void rmshm(void) {
-	while (shmctl(shm_id, IPC_RMID, 0) == -1);
+	shmctl(shm_id, IPC_RMID, 0);
 }
 
 int main() {
@@ -206,15 +220,18 @@ int main() {
 	char buff[BUFSIZE];
 	char *tok = NULL;
 	FILE *fp;
+	ppid = getpid(); // store parent's pid
 
-	shm_id = shmget((key_t)PORT, sizeof(t_shm), IPC_CREAT|0666);
+	if ((shm_id = shmget((key_t)PORT, sizeof(t_shm), IPC_CREAT|0666)) == -1) {
+		perror("shmeget fail.\n");
+		exit(1);
+	}
 	atexit(rmshm); // detach shared memory at exit
 
 	if (!(fp = fopen("httpd.conf", "r"))) { // open the httpd.conf file
 		perror("Fail to open httpd.conf file.\n");
 		exit(1);
 	}
-
 	while (fgets(buff, sizeof(buff), fp)) { // read each line 
 		tok = strtok(buff, ": ");
 		if (strcmp(tok, "MaxChilds") == 0)  // parse the values
@@ -228,14 +245,12 @@ int main() {
 		else if (strcmp(tok, "MaxHistory") == 0) 
 			conf.MaxHistory = atoi(strtok(NULL, " \n\0"));
 	}
-
 	fclose(fp); // close the file
 
 	if ((sd = socket(PF_INET, SOCK_STREAM, 0)) < 0) { // open socket
 		perror("Server : Can't open stream socket\n");
 		exit(1);
 	}	
-
 	setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)); // to prevent bind err
 	setsockopt(sd, SOL_SOCKET, SO_KEEPALIVE, &(int){1}, sizeof(int)); // to keep connection alive until download completed 
 
@@ -252,33 +267,30 @@ int main() {
 	printf("[%.24s] Server is started.\n", ctime(&t)); // print time server is started
 
 	listen(sd, 5); // listen client
-	shm = (t_shm*)malloc(sizeof(t_shm));
-	shm->ppid = getpid(); // store parent's pid
 	// call signal handler to ready
 	signal(SIGALRM, sigHandler); signal(SIGCHLD, sigHandler); signal(SIGINT, sigHandler); signal(SIGUSR1, sigHandler);
 
+	for (chld_num; chld_num < conf.StartServers; chld_num++) { // pre-forking routine
+		struct s_chld *chld = (t_chld *)malloc(sizeof(t_chld));
+
+		if (chld_num == 0) chld_head = chld; // head
+		else chld_curr->next = chld; // body
+
+		chld->next = 0; 
+		chld->pid = fork();
+		if (chld->pid == 0) { // child process
+		//	kill(ppid, SIGUSR1);
+			child_main(sd);
+			while(1)
+				pause();
+		}
+
+		chld_curr = chld;
+	}
+
 	while (1) {
-		alarm(10); // set signal timer 10 seconds
+		alarm(3); // set signal timer 10 seconds
 		while (!alarm_flag) {
-//			pthread_create(&tid, NULL, &shmHandler, NULL);
-			for (chld_num; chld_num < NCHLD; chld_num++) { // pre-forking routine
-				struct s_chld *chld = (t_chld *)malloc(sizeof(t_chld));
-				if (chld_num == 0) { // head
-					chld_head = chld; 
-				}
-				else { // body
-					chld_curr->next = chld;
-				}
-				chld->next = 0; //chld_head; // circular linked list
-				chld->pid = fork();
-				if (chld->pid == 0) { // child process
-					child_main(sd);
-					while(1)
-						pause();
-					return 0;
-				}
-				chld_curr = chld;
-			}
 		}
 		alarm_flag = 0; // reset the flag
 	}
@@ -369,96 +381,106 @@ void child_main(int sd) {
 				}
 				strcat(cwd, url); 
 			}
-			time(&t);
+			time(&t); // get connected time
 			puts("========= New Client ============"); // connected message
 			printf("[%.24s]\nIP : %s\nPort : %d\n", ctime(&t), inet_ntoa(inet_cli_addr), cli_addr.sin_port); // clinet address
 			puts("=================================\n");
 
-			if (shm == 0) {
-				if ((shm = (t_shm*)shmat(shm_id, (void*)0, 0)) == (void*)-1) {
-					perror("shmat fail. in line 177\n");
-					return ;
-				}
-			}
+
 			// make connection history 
-		
-			No++;
-			time(&t); // get connected time
-			strcpy(shm->history[No%10].IP, inet_ntoa(inet_cli_addr));
-			strcpy(shm->history[No%10].time, ctime(&t)); // store time in string format 
-			shm->history[No%10].pid = pid;
-			shm->history[No%10].port = cli_addr.sin_port;
+			// 
+//			pthread_create(&tid, NULL, &shmHandler, NULL);
+//
+			void *vshm;
+			t_shm *shm;
+			if ((vshm = shmat(shm_id, (void*)0, 0)) == (void*)-1) { // shm attach
+				perror("shmat fail.2\n");
+				exit(1);
+			}
+			shm = (t_shm*)vshm;
 
-				t_list *head = 0; // head of list
-				DIR *dirp;
-				int fd = 0;
+			// initialize new node
+			int idx = ++(shm->No) % (conf.MaxHistory);
+			strcpy(shm->history[idx].IP, inet_ntoa(inet_cli_addr));
+			strcpy(shm->history[idx].time, ctime(&t)); // store time in string format 
+			shm->history[idx].pid = getpid();
+			shm->history[idx].port = cli_addr.sin_port;
+			
+			shmdt(vshm);
 
-				if ((dirp = opendir(cwd)) == NULL) { // not dir
-					t_list *temp = 0;
-					if (!(temp = (t_list*)malloc(sizeof(t_list)))) exit(1); // initialize temp
-					if (lstat(cwd, &(temp->st)) == -1) { // 404 not found
-						status = 404;
-						strcpy(content_type, "text/html"); // directory html file 
-						sprintf(response_message, 
-							"<h1>Not Found</h1>"
-							"The request URL %s was not found on this server<br/>"
-							"HTTP %d - Not Page Found", cwd, status);
-						response_len = strlen(response_message);
-					}
-					else { // file
-						fd = open(cwd, O_RDONLY); // open file
-						if (fnmatch("*.jpeg", cwd, FNM_CASEFOLD) == 0 || fnmatch("*.jpg", cwd, FNM_CASEFOLD) == 0 || fnmatch("*.png", cwd, FNM_CASEFOLD) == 0) { // image process
-							strcpy(content_type, "image/*"); // image file
-						}
-						else {
-							strcpy(content_type, "text/plain"); // source code or text file
-						}
-						response_len = temp->st.st_size; // get size of file
-					}
-					free(temp);
-				}
-				else {
-					strcpy(content_type, "text/html"); // directory html file
-					if (get_list(&head, dirp, cwd) == -1) return;	// make list of dirent
-					if (aflag == 0) { // root
-						sprintf(response_message, // Welcome
-							"<h1>Welcome to System Programming Http</h1>"
-							"<b>Directory path : %s <br/></b> ", cwd);
-					}
-					else {
-						sprintf(response_message, 
-							"<h1>System Programming Http</h1>"
-							"<b>Directory path : %s <br/></b> ", cwd);			
-					}
-					sort_list(&head); // sort list
-					print_list(&head); // print list of current working directory
-					free_list(&head); // free
+			t_list *head = 0; // head of list
+			DIR *dirp;
+			int fd = 0;
+
+			if ((dirp = opendir(cwd)) == NULL) { // not dir
+				t_list *temp = 0;
+				if (!(temp = (t_list*)malloc(sizeof(t_list)))) exit(1); // initialize temp
+				if (lstat(cwd, &(temp->st)) == -1) { // 404 not found
+					status = 404;
+					strcpy(content_type, "text/html"); // directory html file 
+					sprintf(response_message, 
+						"<h1>Not Found</h1>"
+						"The request URL %s was not found on this server<br/>"
+						"HTTP %d - Not Page Found", cwd, status);
 					response_len = strlen(response_message);
 				}
-				closedir(dirp); // close
-				sprintf(response_header, // response header
-					"HTTP/1.1 %d OK\r\n"
-					"Server:2023 simple web server\r\n"
-					"Connection: keep-alive\r\n"
-					"Content-type: %s\r\n"
-					"Content-length:%lu\r\n\r\n", status, content_type, response_len);
-
-				write(cli_sd, response_header, strlen(response_header)); // write header
-				if (fd) { // file
-					int num_read;
-					while((num_read = read(fd, response_message, BUFSIZE)) > 0) {
-						write(cli_sd, response_message, num_read);
+				else { // file
+					fd = open(cwd, O_RDONLY); // open file
+					if (fnmatch("*.jpeg", cwd, FNM_CASEFOLD) == 0 || fnmatch("*.jpg", cwd, FNM_CASEFOLD) == 0 || fnmatch("*.png", cwd, FNM_CASEFOLD) == 0) { // image process
+						strcpy(content_type, "image/*"); // image file
 					}
+					else {
+						strcpy(content_type, "text/plain"); // source code or text file
+					}
+					response_len = temp->st.st_size; // get size of file
 				}
-				else
-					write(cli_sd, response_message, response_len);	// write reponse
-				memset(response_message, 0, sizeof(response_message)); // reset
+				free(temp);
+			}
+			else {
+				strcpy(content_type, "text/html"); // directory html file
+				if (get_list(&head, dirp, cwd) == -1) return;	// make list of dirent
+				if (aflag == 0) { // root
+					sprintf(response_message, // Welcome
+						"<h1>Welcome to System Programming Http</h1>"
+						"<b>Directory path : %s <br/></b> ", cwd);
+				}
+				else {
+					sprintf(response_message, 
+						"<h1>System Programming Http</h1>"
+						"<b>Directory path : %s <br/></b> ", cwd);			
+				}
+				sort_list(&head); // sort list
+				print_list(&head); // print list of current working directory
+				free_list(&head); // free
+				response_len = strlen(response_message);
+			}
+			closedir(dirp); // close
+			sprintf(response_header, // response header
+				"HTTP/1.1 %d OK\r\n"
+				"Server:2023 simple web server\r\n"
+				"Connection: keep-alive\r\n"
+				"Content-type: %s\r\n"
+				"Content-length:%lu\r\n\r\n", status, content_type, response_len);
 
-				sleep(5);		
-				close(fd);
-				close(cli_sd);
-				exit(No);
-			
+			write(cli_sd, response_header, strlen(response_header)); // write header
+			if (fd) { // file
+				int num_read;
+				while((num_read = read(fd, response_message, BUFSIZE)) > 0) {
+					write(cli_sd, response_message, num_read);
+				}
+			}
+			else
+				write(cli_sd, response_message, response_len);	// write reponse
+			memset(response_message, 0, sizeof(response_message)); // reset
+
+			sleep(5);		
+			close(fd);
+			close(cli_sd);
+			time(&t);
+			puts("====== Disconnected Client ======"); // print information of disconneted client
+			printf("[%.24s]\nIP : %s\nPort : %d\n", ctime(&t), inet_ntoa(inet_cli_addr), cli_addr.sin_port); // clinet address
+			puts("=================================\n");
+			exit(1);
 		}
 	}
 }
