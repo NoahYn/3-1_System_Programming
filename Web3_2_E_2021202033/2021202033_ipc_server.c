@@ -391,7 +391,7 @@ int main() {
 	}
 
 	while (1) {
-		alarm(5); // set signal timer 10 seconds
+		alarm(10); // set signal timer 10 seconds
 		while (!alarm_flag);
 		alarm_flag = 0; // reset the flag
 	}
