@@ -149,8 +149,29 @@ void sigHandler(int sig) {
 	}
 	else if (sig == SIGUSR2) { // print --idle
 		pthread_t tid;
-		pthread_create(&tid, NULL, &print_idle, &(int){-1});
+		int arg = -1;
+		pthread_create(&tid, NULL, &print_idle, &arg);
 		pthread_join(tid, NULL);
+		if (arg > 0) {
+			t_chld *temp = chld_head;
+			while(temp->next) 
+				temp = temp->next;
+			while (arg--) {
+				temp->next = (t_chld*)malloc(sizeof(t_chld));
+				temp = temp->next;
+				temp->next = 0;
+				temp->pid = fork();
+				if (temp->pid == 0) { // child process
+					while(1)
+						child_main(sd);
+				}
+				else if (temp->pid > 0) { // parent process
+					pthread_t tid;
+					pthread_create(&tid, NULL, &fork_routine, &temp->pid);
+					pthread_join(tid, NULL);
+				}
+			}
+		}
 	}
 }
 
@@ -190,7 +211,6 @@ void *terminate_routine(void *vptr) {
 		kill(chld_head->pid, SIGTERM); // kill the child
 		printf("[%.24s] %d process is terminated.\n", ctm, chld_head->pid); // print termination message
 		printf("[%.24s] IdleProcessCount : %d\n", ctm, --(shm->idle_num)); // print idle count
-		chld_num--;
 		free(chld_head); 
 		chld_head = temp; // get next child
 	}
@@ -201,7 +221,7 @@ void *fork_routine(void *vptr) {
 	pthread_mutex_lock(&mtx);
 	t_shm* shm;
 	if ((shm = shmat(shm_id, NULL, 0)) == (void*)-1) { // shm attach
-		perror("shmat fail1.\n");
+		perror("shmat fail.\n");
 		exit(1);
 	}
 
@@ -223,35 +243,23 @@ void* print_idle(void *vptr) {
 	shm->idle_num += idle_add;
 	time(&t);	ctime_r(&t, ctm);		
 	printf("[%.24s] IdleProcessCount : %d\n", ctm, (shm->idle_num)); // print time child process is forked
-	printf("Child process count : %d\n", chld_num);
 
 	if (shm->idle_num > conf.MaxIdleNum) {
-		//	while (shm->idle_num > conf.StartServers) {
-		//		kill(chld_head->pid, SIGTERM);
-		//		chld_head = chld_head->next;
-		//		shm->idle_num--;
-		//		chld_num--;
-		//	}
+		t_chld *temp;
+		while (chld_head && shm->idle_num > conf.StartServers) {
+			temp = chld_head->next; // backup next
+			time(&t);	ctime_r(&t, ctm); // get the time
+			kill(chld_head->pid, SIGTERM); // kill the child
+			printf("[%.24s] %d process is terminated.\n", ctm, chld_head->pid); // print termination message
+			printf("[%.24s] IdleProcessCount : %d\n", ctm, --(shm->idle_num)); // print idle count
+			chld_num--;
+			free(chld_head); 
+			chld_head = temp; // get next child
+		}
 	}
 	else if (shm->idle_num < conf.MinIdleNum) {
-		//while (shm->idle_num < conf.StartServers) {
-		//		temp = chld_head;
-		//		while(temp->next) {
-		//			temp = temp->next;
-		//		}
-		//		temp->next = (t_chld*)malloc(sizeof(t_chld));
-		//		temp = temp->next;
-		//		temp->next = 0;
-		//		temp->pid = fork();
-		//		if (temp->pid == 0) {
-		//			kill(getppid(), SIGUSR1);
-		//			child_main(sd);
-		//			while(1)
-		//				pause();
-		//		}
-		//		chld_num++;
+		*(int*)vptr = conf.StartServers - shm->idle_num;
 	}
-
 	pthread_mutex_unlock(&mtx);
 }
 
@@ -453,10 +461,11 @@ void child_main(int sd) {
 			new_his.pid = getpid();
 			new_his.port = cli_addr.sin_port;
 
+			chld_num++;
 			pthread_t tid;
 			pthread_create(&tid, NULL, &new_history, (void*)&new_his); // save in shared memory
 			pthread_join(tid, NULL);
-			kill(getppid(), SIGUSR1); // print ++idle_count
+			kill(getppid(), SIGUSR2); // print --idle_count
 
 			t_list *head = 0; // head of list
 			DIR *dirp;
@@ -529,7 +538,7 @@ void child_main(int sd) {
 			puts("====== Disconnected Client ======"); // print information of disconneted client
 			printf("[%.24s]\nIP : %s\nPort : %d\n", ctm, inet_ntoa(inet_cli_addr), cli_addr.sin_port); // clinet address
 			puts("=================================\n");
-			kill(getppid(), SIGUSR2);
+			kill(getppid(), SIGUSR1); // --idle_count
 		}
 	}
 }
