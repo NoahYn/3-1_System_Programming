@@ -58,44 +58,51 @@ typedef struct s_chld { // child process
 } t_chld;
 
 typedef struct s_conf {
-	size_t MaxChilds;
-	size_t MaxIdleNum;
-	size_t MinIdleNum;
-	size_t StartServers;
-	size_t MaxHistory;
+	int MaxChilds;
+	int MaxIdleNum;
+	int MinIdleNum;
+	int StartServers;
+	int MaxHistory;
 } t_conf;
 
 typedef struct s_shm {
 	t_history history[50];
-	size_t idle_num;
+	int idle_num;
 	int No;
 } t_shm;
 
-static void fnmatch2argv(int *argc, char **argv[]); // convert wild card to names matched
-static void free_list(t_list **head); // free list
-static int get_list(t_list **head, DIR *dirp, char *path); // make list
-static int strlscmp(char *s1, char *s2); // compare by the order given by assignment
-static void sort_list(t_list **head); // sort list
-static void print_node(char* path, char *name); // print each file
-static void print_list(t_list **head); // print list
-static void child_main(int sd);
+void fnmatch2argv(int *argc, char **argv[]); // convert wild card to names matched
+void free_list(t_list **head); // free list
+int get_list(t_list **head, DIR *dirp, char *path); // make list
+int strlscmp(char *s1, char *s2); // compare by the order given by assignment
+void sort_list(t_list **head); // sort list
+void print_node(char* path, char *name); // print each file
+void print_list(t_list **head); // print list
+void child_main(int sd);
 void sigHandler(int sig);
+void rmshm(void);
+void *fork_routine(void *vptr);
+void *terminate_routine(void *vptr);
+void *new_history(void *vptr);
+void* print_history(void *vptr);
+void* print_idle(void *vptr);
+
 void *shmHandler(void *vptr);
 
 static int aflag = 0; // -a option
 static int cli_sd; 
+static int sd; // socket descripter
 static unsigned int cwd_len = 0;
 static char response_message[BUFSIZE*BUFSIZE*BUFSIZE] = {0,};
 static char content_type[20] = {0,};
 static unsigned int alarm_flag = 0;
 static time_t t;
+static char ctm[30];
 static t_chld *chld_head;
 static int chld_num = 0;
 static pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
 static int shm_id;
 static t_conf conf;
-static pid_t ppid;
-static pthread_t tid;
 
 ///////////////////////////////////////////////////////////////////////
 // sigHandler														 //
@@ -107,32 +114,19 @@ static pthread_t tid;
 
 void sigHandler(int sig) {
 	if (sig == SIGALRM) { // timer is over!
-		puts("========= Connection History ==================================="); // print recently connected client list
-		printf("No.\tIP\t\tPID\tPORT\tTIME\n");
-		t_shm* shm;
-
-		if ((shm = shmat(shm_id, NULL, 0)) == (void*)-1) { // shm attach
-			perror("shmat fail1.\n");
-			exit(1);
-		}
-
-		int num = 1;
-		for (int i = conf.MaxHistory; i >= 1; i--) {
-			int idx = (shm->No+i)%conf.MaxHistory;
-			if (shm->history[idx].pid == 0) continue;
-			printf("%d\t%s\t%d\t%d\t%s", num++, shm->history[idx].IP, shm->history[idx].pid, shm->history[idx].port, shm->history[idx].time);
-		}
-
+		pthread_t tid;
+		pthread_create(&tid, NULL, &print_history, NULL);
+		pthread_join(tid, NULL);
 		alarm_flag = 1; // loop flag == 1 until timer is over
 	}
-	else if (sig == SIGCHLD) { // child dies
-		int stat;
-		wait(&stat); // get termination status from child that is number n-th connected 
-	}
+	//else if (sig == SIGCHLD) { // child dies
+	//	int stat;
+	//	wait(&stat); // get termination status from child 
+	//}
 	else if (sig == SIGINT) { // terminate all child process and self
-		struct s_chld *chld_curr = chld_head;
+		t_chld *chld_curr = chld_head;
 		int parent = 1;
-		while (chld_curr) {
+		while (chld_curr) { // find parent
 			if (chld_curr->pid == 0) { // this process is child
 				parent = 0; 
 				break;
@@ -140,87 +134,152 @@ void sigHandler(int sig) {
 			chld_curr = chld_curr->next;
 		}
 		if (parent) { // we need only one process : parent
-			chld_curr = chld_head;
-			while (chld_curr) {
-				kill(chld_curr->pid, SIGTERM); // kill child process
-				printf("[%.24s] %d process is terminated.\n", ctime(&t), chld_curr->pid); // print child process info
-				chld_curr = chld_curr->next; // get next child
-			}
-			printf("[%.24s] Server is terminated.\n", ctime(&t)); 
-			exit(1); 
-		}
-		else {
-			pause();
+			pthread_t tid;
+			pthread_create(&tid, NULL, &terminate_routine, NULL);
+			pthread_join(tid, NULL);
+			time(&t);	ctime_r(&t, ctm);
+			printf("[%.24s] Server is terminated.\n", ctm);
 		}
 		exit(1);
 	}
-	/*
-	else if (sig == SIGUSR1) { // idle process++
-		pthread_create(&tid, NULL, &shmHandler, &(long long){1});
+	else if (sig == SIGUSR1) { // print ++idle
+		pthread_t tid;
+		pthread_create(&tid, NULL, &print_idle, &(int){1});
 		pthread_join(tid, NULL);
 	}
-	else if (sig == SIGUSR2) { // idle process--
-		pthread_create(&tid, NULL, &shmHandler, &(long long){-1});
+	else if (sig == SIGUSR2) { // print --idle
+		pthread_t tid;
+		pthread_create(&tid, NULL, &print_idle, &(int){-1});
 		pthread_join(tid, NULL);
 	}
-	*/
 }
 
-///////////////////////////////////////////////////////////////////////
-// shmHandler														 //
-// ================================================================= //
-// Input: 	 								 //
-// Output: 														 //
-// Purpose: handling shared memory									 //
-///////////////////////////////////////////////////////////////////////
-/*
-void *shmHandler(void *vptr) {
-	long long arg = *(long long *)vptr;
-	if ((long long)vptr > 0) {
-		pthread_mutex_lock(&mtx);
-		time(&t);
-		printf("[%.24s] IdleProcessCount : %ld\n", ctime(&t), ++(shm->idle_num)); // print time child process is forked
-		if (shm->idle_num > conf.MaxIdleNum) {
-	//		kill(SIGINT)
-		}
-		pthread_mutex_unlock(&mtx);
-	}
-	else {
-		pthread_mutex_lock(&mtx);
-		shm->idle_num--;
-		if (shm->idle_num < conf.MinIdleNum) {
-
-		}
-		pthread_mutex_unlock(&mtx);
+void* print_history(void *vptr) {
+	pthread_mutex_lock(&mtx);
+	t_shm* shm;
+	if ((shm = shmat(shm_id, NULL, 0)) == (void*)-1) { // shm attach
+		perror("shmat fail1.\n");
+		exit(1);
 	}
 
-
-	return NULL;
+	puts("====================== Connection History ======================"); // print recently connected client list
+	printf("No.\tIP\t\tPID\tPORT\tTIME\n"); // attribute 
+	
+	int num = 1; // history number
+	for (int i = conf.MaxHistory; i >= 1; i--) {
+		int idx = (shm->No+i)%conf.MaxHistory; // find recently connected client's idx
+		if (shm->history[idx].pid == 0) continue;
+		printf("%d\t%s\t%d\t%d\t%s", num++, shm->history[idx].IP, shm->history[idx].pid, shm->history[idx].port, shm->history[idx].time);
+	}
+	puts("================================================================"); 
+	pthread_mutex_unlock(&mtx);
 }
 
-*/
+void *terminate_routine(void *vptr) {
+	pthread_mutex_lock(&mtx);
+	t_shm* shm;
+	if ((shm = shmat(shm_id, NULL, 0)) == (void*)-1) { // shm attach
+		perror("shmat fail.\n");
+		exit(1);
+	}
 
-///////////////////////////////////////////////////////////////////////
-// rmshm															 //
-// ================================================================= //
-// Input: void						 								 //
-// Output: void														 //
-// Purpose: call shmdt to detach shared memory						 //
-///////////////////////////////////////////////////////////////////////
-
-void rmshm(void) {
-	shmctl(shm_id, IPC_RMID, 0);
+	t_chld *temp;
+	while (chld_head) {
+		temp = chld_head->next; // backup next
+		time(&t);	ctime_r(&t, ctm); // get the time
+		kill(chld_head->pid, SIGTERM); // kill the child
+		printf("[%.24s] %d process is terminated.\n", ctm, chld_head->pid); // print termination message
+		printf("[%.24s] IdleProcessCount : %d\n", ctm, --(shm->idle_num)); // print idle count
+		chld_num--;
+		free(chld_head); 
+		chld_head = temp; // get next child
+	}
+	pthread_mutex_unlock(&mtx);
 }
+
+void *fork_routine(void *vptr) {
+	pthread_mutex_lock(&mtx);
+	t_shm* shm;
+	if ((shm = shmat(shm_id, NULL, 0)) == (void*)-1) { // shm attach
+		perror("shmat fail1.\n");
+		exit(1);
+	}
+
+	pid_t pid = *(pid_t*)vptr;
+	time(&t);	ctime_r(&t, ctm);
+	printf("[%.24s] %d process is forked.\n", ctm, pid); 
+	printf("[%.24s] IdleProcessCount : %d\n", ctm, ++(shm->idle_num)); // print time child process is forked
+	pthread_mutex_unlock(&mtx);
+}
+
+void* print_idle(void *vptr) {
+	pthread_mutex_lock(&mtx);
+	t_shm* shm;
+	if ((shm = shmat(shm_id, NULL, 0)) == (void*)-1) { // shm attach
+		perror("shmat fail.\n");
+		exit(1);
+	}		
+	int idle_add = *(int *)vptr;
+	shm->idle_num += idle_add;
+	time(&t);	ctime_r(&t, ctm);		
+	printf("[%.24s] IdleProcessCount : %d\n", ctm, (shm->idle_num)); // print time child process is forked
+	printf("Child process count : %d\n", chld_num);
+
+	if (shm->idle_num > conf.MaxIdleNum) {
+		//	while (shm->idle_num > conf.StartServers) {
+		//		kill(chld_head->pid, SIGTERM);
+		//		chld_head = chld_head->next;
+		//		shm->idle_num--;
+		//		chld_num--;
+		//	}
+	}
+	else if (shm->idle_num < conf.MinIdleNum) {
+		//while (shm->idle_num < conf.StartServers) {
+		//		temp = chld_head;
+		//		while(temp->next) {
+		//			temp = temp->next;
+		//		}
+		//		temp->next = (t_chld*)malloc(sizeof(t_chld));
+		//		temp = temp->next;
+		//		temp->next = 0;
+		//		temp->pid = fork();
+		//		if (temp->pid == 0) {
+		//			kill(getppid(), SIGUSR1);
+		//			child_main(sd);
+		//			while(1)
+		//				pause();
+		//		}
+		//		chld_num++;
+	}
+
+	pthread_mutex_unlock(&mtx);
+}
+
+void *new_history(void *vptr) {
+	pthread_mutex_lock(&mtx);
+	t_shm* shm;
+	if ((shm = shmat(shm_id, NULL, 0)) == (void*)-1) { // shm attach
+		perror("shmat fail.\n");
+		exit(1);
+	}
+		
+	// initialize new history
+	t_history *new_his = (t_history*)vptr;
+	int idx = ++(shm->No) % (conf.MaxHistory);
+	strcpy(shm->history[idx].IP, new_his->IP);
+	strcpy(shm->history[idx].time, new_his->time); 
+	shm->history[idx].pid = new_his->pid;
+	shm->history[idx].port = new_his->port;
+	pthread_mutex_unlock(&mtx);
+}
+
 
 int main() {
 	struct sockaddr_in srv_addr; // address of server
-	int sd; // socket descripter
 	struct s_chld *chld_curr; // child_node
-	pthread_t tid; // thread id
 	char buff[BUFSIZE];
 	char *tok = NULL;
 	FILE *fp;
-	ppid = getpid(); // store parent's pid
 
 	if ((shm_id = shmget((key_t)PORT, sizeof(t_shm), IPC_CREAT|0666)) == -1) {
 		perror("shmeget fail.\n");
@@ -264,34 +323,38 @@ int main() {
 		exit(1);
 	}
 	time(&t); // get time
-	printf("[%.24s] Server is started.\n", ctime(&t)); // print time server is started
+	ctime_r(&t, ctm);
+	printf("[%.24s] Server is started.\n", ctm); // print time server is started
 
 	listen(sd, 5); // listen client
 	// call signal handler to ready
-	signal(SIGALRM, sigHandler); signal(SIGCHLD, sigHandler); signal(SIGINT, sigHandler); signal(SIGUSR1, sigHandler);
+	signal(SIGALRM, sigHandler); 
+	//signal(SIGCHLD, sigHandler); 
+	signal(SIGINT, sigHandler); signal(SIGUSR1, sigHandler); signal(SIGUSR2, sigHandler);
 
-	for (chld_num; chld_num < conf.StartServers; chld_num++) { // pre-forking routine
+	while (chld_num < conf.StartServers) { // pre-forking routine
 		struct s_chld *chld = (t_chld *)malloc(sizeof(t_chld));
 
-		if (chld_num == 0) chld_head = chld; // head
+		if (chld_num++ == 0) chld_head = chld; // head
 		else chld_curr->next = chld; // body
+		chld_curr = chld;
 
-		chld->next = 0; 
+		chld->next = 0;
 		chld->pid = fork();
 		if (chld->pid == 0) { // child process
-		//	kill(ppid, SIGUSR1);
-			child_main(sd);
 			while(1)
-				pause();
+				child_main(sd);
 		}
-
-		chld_curr = chld;
+		else if (chld->pid > 0) { // parent process
+			pthread_t tid;
+			pthread_create(&tid, NULL, &fork_routine, &chld->pid);
+			pthread_join(tid, NULL);
+		}
 	}
 
 	while (1) {
-		alarm(3); // set signal timer 10 seconds
-		while (!alarm_flag) {
-		}
+		alarm(5); // set signal timer 10 seconds
+		while (!alarm_flag);
 		alarm_flag = 0; // reset the flag
 	}
 	return 0;
@@ -306,11 +369,7 @@ int main() {
 ///////////////////////////////////////////////////////////////////////
 
 void child_main(int sd) {
-	time(&t);
-	printf("[%.24s] %d process is forked.\n", ctime(&t), getpid()); // print time child process is forked
-
 	while (1) {
-		pid_t pid;
 		struct sockaddr_in cli_addr; // address of client
 		struct in_addr inet_cli_addr;
 		char buf[BUFSIZE] = {0,}; // buffer to read request 
@@ -365,9 +424,9 @@ void child_main(int sd) {
 								
 			close(cli_sd);
 		}
-		else { // client has access right. 				
+		else { // client has access right. 
 			read(cli_sd, buf, BUFSIZE); // read request from client
-			tok = strtok(buf, " ");
+			tok = strtok(buf, " "); // parsing request
 			strcpy(method, tok); // tok method
 			if (strcmp(method, "GET") == 0) {
 				tok = strtok(0, " "); // tok url
@@ -381,32 +440,23 @@ void child_main(int sd) {
 				}
 				strcat(cwd, url); 
 			}
-			time(&t); // get connected time
+
+			time(&t);	ctime_r(&t, ctm); // get connected time
 			puts("========= New Client ============"); // connected message
-			printf("[%.24s]\nIP : %s\nPort : %d\n", ctime(&t), inet_ntoa(inet_cli_addr), cli_addr.sin_port); // clinet address
+			printf("[%.24s]\nIP : %s\nPort : %d\n", ctm, inet_ntoa(inet_cli_addr), cli_addr.sin_port); // clinet address
 			puts("=================================\n");
 
+			// initialize new history
+			t_history new_his;
+			strcpy(new_his.IP, inet_ntoa(inet_cli_addr));
+			strcpy(new_his.time, ctm); // store time in string format 
+			new_his.pid = getpid();
+			new_his.port = cli_addr.sin_port;
 
-			// make connection history 
-			// 
-//			pthread_create(&tid, NULL, &shmHandler, NULL);
-//
-			void *vshm;
-			t_shm *shm;
-			if ((vshm = shmat(shm_id, (void*)0, 0)) == (void*)-1) { // shm attach
-				perror("shmat fail.2\n");
-				exit(1);
-			}
-			shm = (t_shm*)vshm;
-
-			// initialize new node
-			int idx = ++(shm->No) % (conf.MaxHistory);
-			strcpy(shm->history[idx].IP, inet_ntoa(inet_cli_addr));
-			strcpy(shm->history[idx].time, ctime(&t)); // store time in string format 
-			shm->history[idx].pid = getpid();
-			shm->history[idx].port = cli_addr.sin_port;
-			
-			shmdt(vshm);
+			pthread_t tid;
+			pthread_create(&tid, NULL, &new_history, (void*)&new_his); // save in shared memory
+			pthread_join(tid, NULL);
+			kill(getppid(), SIGUSR1); // print ++idle_count
 
 			t_list *head = 0; // head of list
 			DIR *dirp;
@@ -473,16 +523,27 @@ void child_main(int sd) {
 				write(cli_sd, response_message, response_len);	// write reponse
 			memset(response_message, 0, sizeof(response_message)); // reset
 
+			close(fd);	close(cli_sd);
 			sleep(5);		
-			close(fd);
-			close(cli_sd);
-			time(&t);
+			time(&t);	ctime_r(&t, ctm);
 			puts("====== Disconnected Client ======"); // print information of disconneted client
-			printf("[%.24s]\nIP : %s\nPort : %d\n", ctime(&t), inet_ntoa(inet_cli_addr), cli_addr.sin_port); // clinet address
+			printf("[%.24s]\nIP : %s\nPort : %d\n", ctm, inet_ntoa(inet_cli_addr), cli_addr.sin_port); // clinet address
 			puts("=================================\n");
-			exit(1);
+			kill(getppid(), SIGUSR2);
 		}
 	}
+}
+
+///////////////////////////////////////////////////////////////////////
+// rmshm															 //
+// ================================================================= //
+// Input: void						 								 //
+// Output: void														 //
+// Purpose: call shmdt to detach shared memory						 //
+///////////////////////////////////////////////////////////////////////
+
+void rmshm(void) {
+	shmctl(shm_id, IPC_RMID, 0);
 }
 
 ///////////////////////////////////////////////////////////////////////
