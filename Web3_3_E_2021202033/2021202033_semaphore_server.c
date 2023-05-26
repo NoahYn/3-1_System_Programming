@@ -88,7 +88,7 @@ void *term_routine(void *vptr); // termination routine
 void *new_history(void *vptr); // make new_history info
 void* print_history(void *vptr); // print history when timer is over
 void* print_idle(void *vptr); // print and handle idle_process count
-void *log_string(void* vptr);
+void *log_string(void* vptr); // write string to log file
 
 static int aflag = 0; // -a option
 static int cli_sd; // client socket descriptor
@@ -229,7 +229,7 @@ void *term_routine(void *vptr) {
 		if (shm->idle_num > 0) shm->idle_num--;
 		sprintf(buff, "[%.24s] %d process is terminated.\n[%.24s] IdleProcessCount : %d\n", ctm, chld_head->pid, ctm, shm->idle_num); // print termination message print idle count
 		printf("%s",buff);
-		pthread_create(&tid, NULL, &log_string, buff);
+		pthread_create(&tid, NULL, &log_string, buff); // write to log file 
 		pthread_join(tid, NULL);
 		free(chld_head); 
 		chld_head = temp; // get next child
@@ -258,7 +258,7 @@ void *fork_routine(void *vptr) {
 	time(&t);	ctime_r(&t, ctm); // get current time
 	sprintf(buff, "[%.24s] %d process is forked.\n[%.24s] IdleProcessCount : %d\n", ctm, pid, ctm, ++(shm->idle_num)); // print time child process is forked, update and print idle process count  
 	printf("%s", buff);
-	pthread_create(&tid, NULL, &log_string, (void*)buff);
+	pthread_create(&tid, NULL, &log_string, (void*)buff);// write to log file 
 	pthread_join(tid, NULL);
 	pthread_mutex_unlock(&mtx);
 }
@@ -287,7 +287,7 @@ void* print_idle(void *vptr) {
 	time(&t);	ctime_r(&t, ctm);		
 	sprintf(buff, "[%.24s] IdleProcessCount : %d\n", ctm, (shm->idle_num)); // print idle process count
 	printf("%s", buff);
-	pthread_create(&tid, NULL, &log_string, (void*)buff);
+	pthread_create(&tid, NULL, &log_string, (void*)buff); // write to log file 
 	pthread_join(tid, NULL);
 
 
@@ -299,7 +299,7 @@ void* print_idle(void *vptr) {
 			kill(chld_head->pid, SIGTERM); // kill the child
 			sprintf(buff, "[%.24s] %d process is terminated.\n[%.24s] IdleProcessCount : %d\n", ctm, chld_head->pid, ctm, --(shm->idle_num)); // print termination message
 			printf("%s", buff); 
-			pthread_create(&tid, NULL, &log_string, (void*)buff);	
+			pthread_create(&tid, NULL, &log_string, (void*)buff); // write to log file 
 			pthread_join(tid, NULL);
 			chld_num--;
 			free(chld_head); 
@@ -338,17 +338,25 @@ void *new_history(void *vptr) {
 	pthread_mutex_unlock(&mtx);
 }
 
+///////////////////////////////////////////////////////////////////////
+// log_string														 //
+// ================================================================= //
+// Input: void* vptr : pointer point string				 			 //
+// Output: void* : not in use										 //
+// Purpose : write string to log file				 				 //
+///////////////////////////////////////////////////////////////////////
+
 void *log_string(void* vptr) {
 	char* str = vptr;
 
 	sem = sem_open("sem", O_RDWR);
-	sem_wait(sem);
+	sem_wait(sem); // semaphore mutual exclusion
 
 	FILE *fs = fopen("server_log.txt", "a");
 	fprintf(fs, "%s", str);
 	fclose(fs);
 
-	sem_post(sem);
+	sem_post(sem); // sem ++
 	sem_close(sem);
 }
 
@@ -471,9 +479,9 @@ void child_main(int sd) {
 			perror("Server : accept failed\n");
 			exit(1);
 		}
-		struct timeval start, end;
+		struct timeval start, end; // time = end - start
 		long usec;
-		gettimeofday(&start, NULL); // accept time
+		gettimeofday(&start, NULL); // get accept time
 
 		FILE* fs = fopen("accessible.usr", "r"); // open accessible.usr file
 		int access = 0; // accessible flag
@@ -538,7 +546,7 @@ void child_main(int sd) {
 
 			sprintf(buff, "========= New Client ============\nTIME : [%.24s]\nURL : %s\nIP : %s\nPort : %d\nPID : %d\n=================================\n\n",  ctm, url, new_his.IP, new_his.port, new_his.pid);
 			printf("%s", buff);
-			pthread_create(&tid, NULL, &log_string, (void*)buff);
+			pthread_create(&tid, NULL, &log_string, (void*)buff); // write to log file
 			pthread_join(tid, NULL);
 
 			chld_num++;
@@ -623,7 +631,7 @@ void child_main(int sd) {
 
 			sprintf(buff, "====== Disconnected Client ======\nTIME : [%.24s]\nURL : %s\nIP : %s\nPort : %d\nPID : %d\nCONNECTING TIME : %ld(us)\n=================================\n\n",  ctm, url, new_his.IP, new_his.port, new_his.pid, usec);
 			printf("%s", buff);
-			pthread_create(&tid, NULL, &log_string, buff);
+			pthread_create(&tid, NULL, &log_string, buff); // write to log file
 			pthread_join(tid, NULL);
 			kill(getppid(), SIGUSR1); // --idle_count
 		}
