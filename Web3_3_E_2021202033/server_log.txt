@@ -1,0 +1,198 @@
+[Sat May 27 00:40:19 2023] Server is started.
+[Sat May 27 00:40:19 2023] 13832 process is forked.
+[Sat May 27 00:40:19 2023] IdleProcessCount : 1
+[Sat May 27 00:40:19 2023] 13835 process is forked.
+[Sat May 27 00:40:19 2023] IdleProcessCount : 2
+[Sat May 27 00:40:19 2023] 13838 process is forked.
+[Sat May 27 00:40:19 2023] IdleProcessCount : 3
+[Sat May 27 00:40:19 2023] 13841 process is forked.
+[Sat May 27 00:40:19 2023] IdleProcessCount : 4
+[Sat May 27 00:40:19 2023] 13844 process is forked.
+[Sat May 27 00:40:19 2023] IdleProcessCount : 5
+========= New Client ============
+TIME : [Sat May 27 00:40:21 2023]
+URL : /
+IP : 127.0.0.1
+Port : 64683
+PID : 13832
+=================================
+
+[Sat May 27 00:40:21 2023] IdleProcessCount : 4
+========= New Client ============
+TIME : [Sat May 27 00:40:22 2023]
+URL : /
+IP : 127.0.0.1
+Port : 1196
+PID : 13838
+=================================
+
+[Sat May 27 00:40:22 2023] IdleProcessCount : 3
+[Sat May 27 00:40:22 2023] 13888 process is forked.
+[Sat May 27 00:40:22 2023] IdleProcessCount : 4
+[Sat May 27 00:40:22 2023] 13891 process is forked.
+[Sat May 27 00:40:22 2023] IdleProcessCount : 5
+========= New Client ============
+TIME : [Sat May 27 00:40:23 2023]
+URL : /
+IP : 127.0.0.1
+Port : 4780
+PID : 13844
+=================================
+
+[Sat May 27 00:40:23 2023] IdleProcessCount : 4
+====== Disconnected Client ======
+TIME : [Sat May 27 00:40:26 2023]
+URL : /
+IP : 127.0.0.1
+Port : 64683
+PID : 13832
+CONNECTING TIME : 174762(us)
+=================================
+
+[Sat May 27 00:40:26 2023] IdleProcessCount : 5
+====== Disconnected Client ======
+TIME : [Sat May 27 00:40:27 2023]
+URL : /
+IP : 127.0.0.1
+Port : 1196
+PID : 13838
+CONNECTING TIME : 196649(us)
+=================================
+
+[Sat May 27 00:40:27 2023] IdleProcessCount : 6
+====== Disconnected Client ======
+TIME : [Sat May 27 00:40:28 2023]
+URL : /
+IP : 127.0.0.1
+Port : 4780
+PID : 13844
+CONNECTING TIME : 200791(us)
+=================================
+
+[Sat May 27 00:40:28 2023] IdleProcessCount : 7
+[Sat May 27 00:40:28 2023] 13832 process is terminated.
+[Sat May 27 00:40:28 2023] IdleProcessCount : 6
+[Sat May 27 00:40:28 2023] 13835 process is terminated.
+[Sat May 27 00:40:28 2023] IdleProcessCount : 5
+========= New Client ============
+TIME : [Sat May 27 00:40:30 2023]
+URL : /
+IP : 127.0.0.1
+Port : 52906
+PID : 13888
+=================================
+
+[Sat May 27 00:40:30 2023] IdleProcessCount : 4
+========= New Client ============
+TIME : [Sat May 27 00:40:31 2023]
+URL : /
+IP : 127.0.0.1
+Port : 57514
+PID : 13841
+=================================
+
+[Sat May 27 00:40:31 2023] IdleProcessCount : 3
+[Sat May 27 00:40:31 2023] 14008 process is forked.
+[Sat May 27 00:40:31 2023] IdleProcessCount : 4
+[Sat May 27 00:40:31 2023] 14011 process is forked.
+[Sat May 27 00:40:31 2023] IdleProcessCount : 5
+========= New Client ============
+TIME : [Sat May 27 00:40:31 2023]
+URL : /
+IP : 127.0.0.1
+Port : 61610
+PID : 13838
+=================================
+
+[Sat May 27 00:40:31 2023] IdleProcessCount : 4
+========= New Client ============
+TIME : [Sat May 27 00:40:31 2023]
+URL : /
+IP : 127.0.0.1
+Port : 3243
+PID : 13891
+=================================
+
+[Sat May 27 00:40:31 2023] IdleProcessCount : 3
+[Sat May 27 00:40:31 2023] 14022 process is forked.
+[Sat May 27 00:40:31 2023] IdleProcessCount : 4
+[Sat May 27 00:40:31 2023] 14025 process is forked.
+[Sat May 27 00:40:31 2023] IdleProcessCount : 5
+========= New Client ============
+TIME : [Sat May 27 00:40:31 2023]
+URL : /
+IP : 127.0.0.1
+Port : 5291
+PID : 14008
+=================================
+
+[Sat May 27 00:40:31 2023] IdleProcessCount : 4
+====== Disconnected Client ======
+TIME : [Sat May 27 00:40:36 2023]
+URL : /
+IP : 127.0.0.1
+Port : 52906
+PID : 13888
+CONNECTING TIME : 174423(us)
+=================================
+
+[Sat May 27 00:40:36 2023] IdleProcessCount : 5
+====== Disconnected Client ======
+TIME : [Sat May 27 00:40:36 2023]
+URL : /
+IP : 127.0.0.1
+Port : 57514
+PID : 13841
+CONNECTING TIME : 213004(us)
+=================================
+
+[Sat May 27 00:40:36 2023] IdleProcessCount : 6
+====== Disconnected Client ======
+TIME : [Sat May 27 00:40:36 2023]
+URL : /
+IP : 127.0.0.1
+Port : 61610
+PID : 13838
+CONNECTING TIME : 100930(us)
+=================================
+
+[Sat May 27 00:40:36 2023] IdleProcessCount : 7
+[Sat May 27 00:40:36 2023] 13838 process is terminated.
+[Sat May 27 00:40:36 2023] IdleProcessCount : 6
+[Sat May 27 00:40:36 2023] 13841 process is terminated.
+[Sat May 27 00:40:36 2023] IdleProcessCount : 5
+====== Disconnected Client ======
+TIME : [Sat May 27 00:40:36 2023]
+URL : /
+IP : 127.0.0.1
+Port : 3243
+PID : 13891
+CONNECTING TIME : 204603(us)
+=================================
+
+[Sat May 27 00:40:36 2023] IdleProcessCount : 6
+====== Disconnected Client ======
+TIME : [Sat May 27 00:40:36 2023]
+URL : /
+IP : 127.0.0.1
+Port : 5291
+PID : 14008
+CONNECTING TIME : 197509(us)
+=================================
+
+[Sat May 27 00:40:36 2023] IdleProcessCount : 7
+[Sat May 27 00:40:36 2023] 13844 process is terminated.
+[Sat May 27 00:40:36 2023] IdleProcessCount : 6
+[Sat May 27 00:40:36 2023] 13888 process is terminated.
+[Sat May 27 00:40:36 2023] IdleProcessCount : 5
+[Sat May 27 00:40:49 2023] 13891 process is terminated.
+[Sat May 27 00:40:49 2023] IdleProcessCount : 4
+[Sat May 27 00:40:49 2023] 14008 process is terminated.
+[Sat May 27 00:40:49 2023] IdleProcessCount : 3
+[Sat May 27 00:40:49 2023] 14011 process is terminated.
+[Sat May 27 00:40:49 2023] IdleProcessCount : 2
+[Sat May 27 00:40:49 2023] 14022 process is terminated.
+[Sat May 27 00:40:49 2023] IdleProcessCount : 1
+[Sat May 27 00:40:49 2023] 14025 process is terminated.
+[Sat May 27 00:40:49 2023] IdleProcessCount : 0
+[Sat May 27 00:40:49 2023] Server is terminated.

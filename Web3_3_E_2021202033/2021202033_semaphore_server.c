@@ -1,12 +1,12 @@
 ///////////////////////////////////////////////////////////////////////
-// File Name : 2021202033_ipc_server.c							 	 //
-// Date : 2023/05/21	 											 //
+// File Name : 2021202033_semaphore_server.c					 	 //
+// Date : 2023/05/30	 											 //
 // Os : Ubuntu 16.04 LTS 64bits 									 //
 // Author : Sung Min Yoon 									 	 	 //
 // Student ID : 2021202033											 //
 // ----------------------------------------------------------------- //
-// Title : System Programming Assignment #3-2						 //
-// Description : This file is source code for Assignment #3-2		 //
+// Title : System Programming Assignment #3-3						 //
+// Description : This file is source code for Assignment #3-3		 //
 ///////////////////////////////////////////////////////////////////////
 
 #define _GNU_SOURCE // FNM_CASEFOLD option
@@ -23,6 +23,7 @@
 #include <sys/ipc.h> // ipc
 #include <sys/shm.h> // shared memory
 #include <pthread.h> // thread, mutex
+#include <semaphore.h> // semaphore
 #include <signal.h> // signal
 #include <unistd.h> // for option
 #include <dirent.h> // for opendir, readdir, closedir
@@ -31,6 +32,7 @@
 #include <pwd.h> // for pwduid
 #include <grp.h> // for groupgid
 #include <time.h> // time
+#include <sys/time.h>
 #include <fnmatch.h> // fnmatch
 
 #define URL_LEN 256
@@ -86,6 +88,7 @@ void *term_routine(void *vptr); // termination routine
 void *new_history(void *vptr); // make new_history info
 void* print_history(void *vptr); // print history when timer is over
 void* print_idle(void *vptr); // print and handle idle_process count
+void *log_string(void* vptr);
 
 static int aflag = 0; // -a option
 static int cli_sd; // client socket descriptor
@@ -102,6 +105,7 @@ static pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
 static int shm_id;
 static t_conf conf;
 static pthread_t tid;
+static sem_t *sem;
 
 ///////////////////////////////////////////////////////////////////////
 // sigHandler														 //
@@ -131,7 +135,11 @@ void sigHandler(int sig) {
 			pthread_create(&tid, NULL, &term_routine, NULL); // call termination routine
 			pthread_join(tid, NULL);
 			time(&t);	ctime_r(&t, ctm); // get current time
-			printf("[%.24s] Server is terminated.\n", ctm); // print server is terminated.
+			char buff[100];
+			sprintf(buff, "[%.24s] Server is terminated.\n", ctm); // print server is terminated.
+			printf("%s", buff);
+			pthread_create(&tid, NULL, &log_string, (void*)buff); // log
+			pthread_join(tid, NULL);
 		}
 		exit(1);
 	}
@@ -178,7 +186,7 @@ void* print_history(void *vptr) {
 	pthread_mutex_lock(&mtx); // mutex lock
 	t_shm* shm;
 	if ((shm = shmat(shm_id, NULL, 0)) == (void*)-1) { // shm attach
-		perror("shmat fail1.\n");
+		perror("shmat fail.\n");
 		exit(1);
 	}
 
@@ -193,6 +201,7 @@ void* print_history(void *vptr) {
 	}
 	puts("================================================================"); 
 	pthread_mutex_unlock(&mtx); // mutex unlock
+	return NULL;
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -212,13 +221,16 @@ void *term_routine(void *vptr) {
 	}
 
 	t_chld *temp;
+	char buff[300];
 	while (chld_head) {
 		temp = chld_head->next; // backup next
 		time(&t);	ctime_r(&t, ctm); // get the time
 		kill(chld_head->pid, SIGTERM); // kill the child
 		if (shm->idle_num > 0) shm->idle_num--;
-		printf("[%.24s] %d process is terminated.\n", ctm, chld_head->pid); // print termination message
-		printf("[%.24s] IdleProcessCount : %d\n", ctm, shm->idle_num); // print idle count
+		sprintf(buff, "[%.24s] %d process is terminated.\n[%.24s] IdleProcessCount : %d\n", ctm, chld_head->pid, ctm, shm->idle_num); // print termination message print idle count
+		printf("%s",buff);
+		pthread_create(&tid, NULL, &log_string, buff);
+		pthread_join(tid, NULL);
 		free(chld_head); 
 		chld_head = temp; // get next child
 	}
@@ -241,10 +253,13 @@ void *fork_routine(void *vptr) {
 		exit(1);
 	}
 
+	char buff[300];
 	pid_t pid = *(pid_t*)vptr; // pid of forked process
 	time(&t);	ctime_r(&t, ctm); // get current time
-	printf("[%.24s] %d process is forked.\n", ctm, pid); // print time child process is forked 
-	printf("[%.24s] IdleProcessCount : %d\n", ctm, ++(shm->idle_num)); // update and print idle process count 
+	sprintf(buff, "[%.24s] %d process is forked.\n[%.24s] IdleProcessCount : %d\n", ctm, pid, ctm, ++(shm->idle_num)); // print time child process is forked, update and print idle process count  
+	printf("%s", buff);
+	pthread_create(&tid, NULL, &log_string, (void*)buff);
+	pthread_join(tid, NULL);
 	pthread_mutex_unlock(&mtx);
 }
 
@@ -267,8 +282,14 @@ void* print_idle(void *vptr) {
 	}		
 	int idle_add = *(int *)vptr; // number of idle process to be updated
 	shm->idle_num += idle_add; // update
+
+	char buff[500];
 	time(&t);	ctime_r(&t, ctm);		
-	printf("[%.24s] IdleProcessCount : %d\n", ctm, (shm->idle_num)); // print idle process count
+	sprintf(buff, "[%.24s] IdleProcessCount : %d\n", ctm, (shm->idle_num)); // print idle process count
+	printf("%s", buff);
+	pthread_create(&tid, NULL, &log_string, (void*)buff);
+	pthread_join(tid, NULL);
+
 
 	if (shm->idle_num > conf.MaxIdleNum) { // too much idle_process!  
 		t_chld *temp;
@@ -276,8 +297,10 @@ void* print_idle(void *vptr) {
 			temp = chld_head->next; // backup next
 			time(&t);	ctime_r(&t, ctm); // get the time
 			kill(chld_head->pid, SIGTERM); // kill the child
-			printf("[%.24s] %d process is terminated.\n", ctm, chld_head->pid); // print termination message
-			printf("[%.24s] IdleProcessCount : %d\n", ctm, --(shm->idle_num)); // print idle count
+			sprintf(buff, "[%.24s] %d process is terminated.\n[%.24s] IdleProcessCount : %d\n", ctm, chld_head->pid, ctm, --(shm->idle_num)); // print termination message
+			printf("%s", buff); 
+			pthread_create(&tid, NULL, &log_string, (void*)buff);	
+			pthread_join(tid, NULL);
 			chld_num--;
 			free(chld_head); 
 			chld_head = temp; // get next child
@@ -315,12 +338,29 @@ void *new_history(void *vptr) {
 	pthread_mutex_unlock(&mtx);
 }
 
+void *log_string(void* vptr) {
+	char* str = vptr;
+
+	sem = sem_open("sem", O_RDWR);
+	sem_wait(sem);
+
+	FILE *fs = fopen("server_log.txt", "a");
+	fprintf(fs, "%s", str);
+	fclose(fs);
+
+	sem_post(sem);
+	sem_close(sem);
+}
+
 int main() {
 	struct sockaddr_in srv_addr; // address of server
 	struct s_chld *chld_curr; // child_node
 	char buff[BUFSIZE];
 	char *tok = NULL;
 	FILE *fp;
+
+	sem = sem_open("sem", O_CREAT|O_EXCL, 0700, 1);
+	sem_close(sem);
 
 	if ((shm_id = shmget((key_t)PORT, sizeof(t_shm), IPC_CREAT|0666)) == -1) { // produce shared memory
 		perror("shmeget fail.\n");
@@ -365,7 +405,10 @@ int main() {
 	}
 	time(&t); // get time
 	ctime_r(&t, ctm);
+	fp = fopen("server_log.txt", "w");
+	fprintf(fp, "[%.24s] Server is started.\n", ctm); // print time server is started
 	printf("[%.24s] Server is started.\n", ctm); // print time server is started
+	fclose(fp);
 
 	listen(sd, 5); // listen client
 	// call signal handler to ready
@@ -428,6 +471,9 @@ void child_main(int sd) {
 			perror("Server : accept failed\n");
 			exit(1);
 		}
+		struct timeval start, end;
+		long usec;
+		gettimeofday(&start, NULL); // accept time
 
 		FILE* fs = fopen("accessible.usr", "r"); // open accessible.usr file
 		int access = 0; // accessible flag
@@ -479,17 +525,21 @@ void child_main(int sd) {
 				strcat(cwd, url); 
 			}
 
-			time(&t);	ctime_r(&t, ctm); // get connected time
-			puts("========= New Client ============"); // connected message
-			printf("[%.24s]\nIP : %s\nPort : %d\n", ctm, inet_ntoa(inet_cli_addr), cli_addr.sin_port); // clinet address
-			puts("=================================\n");
-
 			// initialize new history
 			t_history new_his;
 			strcpy(new_his.IP, inet_ntoa(inet_cli_addr));
 			strcpy(new_his.time, ctm); // store time in string format 
 			new_his.pid = getpid();
 			new_his.port = cli_addr.sin_port;
+
+			char buff[1000];
+			time_t t;
+			time(&t);	ctime_r(&t, ctm); // get connected time
+
+			sprintf(buff, "========= New Client ============\nTIME : [%.24s]\nURL : %s\nIP : %s\nPort : %d\nPID : %d\n=================================\n\n",  ctm, url, new_his.IP, new_his.port, new_his.pid);
+			printf("%s", buff);
+			pthread_create(&tid, NULL, &log_string, (void*)buff);
+			pthread_join(tid, NULL);
 
 			chld_num++;
 			pthread_create(&tid, NULL, &new_history, (void*)&new_his); // save in shared memory
@@ -561,12 +611,20 @@ void child_main(int sd) {
 				write(cli_sd, response_message, response_len);	// write reponse
 			memset(response_message, 0, sizeof(response_message)); // reset
 
+			gettimeofday(&end, NULL);
+
+			usec = end.tv_usec - start.tv_usec;
+			if (usec < 0) {
+				usec += 1000000; // borrow from sec
+			}
 			close(fd);	close(cli_sd);
 			sleep(5);		
 			time(&t);	ctime_r(&t, ctm);
-			puts("====== Disconnected Client ======"); // print information of disconneted client
-			printf("[%.24s]\nIP : %s\nPort : %d\n", ctm, inet_ntoa(inet_cli_addr), cli_addr.sin_port); // clinet address
-			puts("=================================\n");
+
+			sprintf(buff, "====== Disconnected Client ======\nTIME : [%.24s]\nURL : %s\nIP : %s\nPort : %d\nPID : %d\nCONNECTING TIME : %ld(us)\n=================================\n\n",  ctm, url, new_his.IP, new_his.port, new_his.pid, usec);
+			printf("%s", buff);
+			pthread_create(&tid, NULL, &log_string, buff);
+			pthread_join(tid, NULL);
 			kill(getppid(), SIGUSR1); // --idle_count
 		}
 	}
