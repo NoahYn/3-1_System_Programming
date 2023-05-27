@@ -24,3 +24,5 @@ access control by accessible.usr
 
 # Third Assignment - pre-fork and multi process and threading
 ![image](https://github.com/NoahYn/3-1_System_Programming/assets/101003842/76b8f11a-1a91-44cf-bb65-ef4f91c33d7a)
+maintain the number of idle process
+multi threading using mutex and semaphore
