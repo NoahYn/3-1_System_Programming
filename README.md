@@ -16,8 +16,8 @@ l, h, S option
 wildcard parsing
 
 # Second Assignment - Web server
-![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/b46f2c48-cbde-416b-9b50-bdf2510631ac/Untitled.png)
+![2-3 1](https://github.com/NoahYn/3-1_System_Programming/assets/101003842/2bb552e2-e9e7-4dd7-a496-d609e07cb6ac)
 http request parsing and respond
 
-![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/21ebcd38-c44b-4020-ba04-48540d1044ae/Untitled.png)
+![2-3 2](https://github.com/NoahYn/3-1_System_Programming/assets/101003842/08212d0d-387e-4d17-b336-212b6f520407)
 access control by accessible.usr
