@@ -21,3 +21,6 @@ http request parsing and respond
 
 ![2-3 2](https://github.com/NoahYn/3-1_System_Programming/assets/101003842/08212d0d-387e-4d17-b336-212b6f520407)
 access control by accessible.usr
+
+# Third Assignment - pre-fork and multi process and threading
+![image](https://github.com/NoahYn/3-1_System_Programming/assets/101003842/76b8f11a-1a91-44cf-bb65-ef4f91c33d7a)
